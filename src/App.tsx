@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { api, ClipItem, Filter, Settings, Snippet } from './api';
+import { api, ClipItem, Filter, Settings, Snippet, UpdateInfo } from './api';
 import { dicts, Dict, Lang } from './i18n';
 import {
   IconCopy,
@@ -15,6 +15,7 @@ import {
   IconX,
 } from './icons';
 import { SettingsModal } from './components/SettingsModal';
+import { Help } from './components/Help';
 
 type View = 'history' | 'stack' | 'snippets';
 
@@ -101,6 +102,8 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [editSnippet, setEditSnippet] = useState<Snippet | 'new' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [updateAvail, setUpdateAvail] = useState<UpdateInfo | null>(null);
+  const [installing, setInstalling] = useState(false);
   const toastTimer = useRef<number | undefined>(undefined);
 
   const lang: Lang = settings?.language ?? 'de';
@@ -129,6 +132,8 @@ export default function App() {
     });
     refreshStack();
     refreshSnippets();
+    // stiller Update-Check beim Start — installiert wird nur nach Klick
+    api.checkUpdate().then(setUpdateAvail).catch(() => {});
   }, [refreshStack, refreshSnippets]);
 
   useEffect(refreshItems, [refreshItems]);
@@ -466,6 +471,28 @@ export default function App() {
         />
       )}
 
+      {updateAvail && (
+        <div className="upd-banner">
+          <span>
+            {t.updateBanner} <strong>{updateAvail.version}</strong>
+          </span>
+          <button
+            className="primary"
+            disabled={installing}
+            onClick={() => {
+              setInstalling(true);
+              api.installUpdate().catch(() => setInstalling(false));
+            }}
+          >
+            {installing ? t.updateInstalling : t.updateInstall}
+          </button>
+          <button className="ghost" onClick={() => setUpdateAvail(null)}>
+            {t.updateLater}
+          </button>
+        </div>
+      )}
+
+      <Help lang={lang} />
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

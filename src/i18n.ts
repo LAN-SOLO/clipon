@@ -81,6 +81,10 @@ const de = {
   updateError: 'Update-Prüfung fehlgeschlagen',
   close: 'Schließen',
   version: 'Version',
+  updateBanner: 'Update verfügbar:',
+  updateInstall: 'Laden & installieren',
+  updateLater: 'Später',
+  updateInstalling: 'Installiere …',
 };
 
 const en: typeof de = {
@@ -158,6 +162,10 @@ const en: typeof de = {
   updateError: 'Update check failed',
   close: 'Close',
   version: 'Version',
+  updateBanner: 'Update available:',
+  updateInstall: 'Download & install',
+  updateLater: 'Later',
+  updateInstalling: 'Installing …',
 };
 
 export type Dict = typeof de;
