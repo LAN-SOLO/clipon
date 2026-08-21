@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api, Settings, UpdateInfo } from '../api';
 import { Dict } from '../i18n';
 
-const APP_VERSION = '0.1.1';
+const APP_VERSION = '0.1.2';
 
 export function SettingsModal({
   settings,
