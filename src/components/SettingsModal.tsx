@@ -1,8 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, Settings, UpdateInfo } from '../api';
 import { Dict } from '../i18n';
+import {
+  ACTIONS,
+  ActionDef,
+  comboFromEvent,
+  formatCombo,
+  GLOBAL_DEFAULTS,
+  hasRealModifier,
+  resolveKeymap,
+} from '../shortcuts';
 
-const APP_VERSION = '0.1.2';
+const APP_VERSION = '0.2.0';
 
 export function SettingsModal({
   settings,
@@ -19,9 +28,108 @@ export function SettingsModal({
   const [updState, setUpdState] = useState<'idle' | 'checking' | 'none' | 'error'>('idle');
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [installing, setInstalling] = useState(false);
+  // shortcut editor: which row is recording ('toggle' | 'stackPop' | action id)
+  const [recording, setRecording] = useState<string | null>(null);
+  const [scError, setScError] = useState<string | null>(null);
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) =>
     setS((prev) => ({ ...prev, [key]: value }));
+
+  // ---- shortcut editor ----------------------------------------------------
+  const keymap = resolveKeymap(s);
+
+  /** All current bindings with display labels, for conflict checks. */
+  const allBindings = (): { key: string; combo: string; label: string }[] => [
+    { key: 'toggle', combo: s.shortcutToggle, label: t.shortcutToggle },
+    { key: 'stackPop', combo: s.shortcutStackPop, label: t.shortcutStackPop },
+    ...ACTIONS.map((a) => ({ key: a.id, combo: keymap[a.id], label: a.label(t) })),
+  ];
+
+  const assign = (rowKey: string, combo: string) => {
+    const conflict = allBindings().find((b) => b.key !== rowKey && b.combo === combo);
+    if (conflict) {
+      setScError(t.scConflict(conflict.label));
+      return;
+    }
+    setScError(null);
+    if (rowKey === 'toggle' || rowKey === 'stackPop') {
+      if (!hasRealModifier(combo)) {
+        setScError(t.scNeedsModifier);
+        return;
+      }
+      set(rowKey === 'toggle' ? 'shortcutToggle' : 'shortcutStackPop', combo);
+      return;
+    }
+    const def = ACTIONS.find((a) => a.id === rowKey)?.def;
+    setS((prev) => {
+      const next = { ...(prev.keymap ?? {}) };
+      if (combo === def) delete next[rowKey];
+      else next[rowKey] = combo;
+      return { ...prev, keymap: next };
+    });
+  };
+
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        setRecording(null);
+        return;
+      }
+      const combo = comboFromEvent(e);
+      if (!combo) return; // pure modifier — keep listening
+      assign(recording, combo);
+      setRecording(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recording, s]);
+
+  const resetAll = () => {
+    setScError(null);
+    setRecording(null);
+    setS((prev) => ({
+      ...prev,
+      shortcutToggle: GLOBAL_DEFAULTS.shortcutToggle,
+      shortcutStackPop: GLOBAL_DEFAULTS.shortcutStackPop,
+      keymap: {},
+    }));
+  };
+
+  const shortcutRow = (rowKey: string, label: string, combo: string, def: string) => (
+    <div className="scrow" key={rowKey}>
+      <span className="sclabel">{label}</span>
+      {combo !== def && recording !== rowKey && (
+        <button
+          className="ghost screset"
+          title="↺"
+          onClick={() => {
+            setScError(null);
+            assign(rowKey, def);
+          }}
+        >
+          ↺
+        </button>
+      )}
+      <button
+        className={`sckey ${recording === rowKey ? 'recording' : ''}`}
+        onClick={() => {
+          setScError(null);
+          setRecording(recording === rowKey ? null : rowKey);
+        }}
+      >
+        {recording === rowKey ? t.scRecording : formatCombo(combo)}
+      </button>
+    </div>
+  );
+
+  const actionRows = (group: ActionDef['group']) =>
+    ACTIONS.filter((a) => a.group === group).map((a) =>
+      shortcutRow(a.id, a.label(t), keymap[a.id], a.def)
+    );
 
   const checkUpdates = () => {
     setUpdState('checking');
@@ -106,23 +214,28 @@ export function SettingsModal({
 
         <div className="sep" />
         <div className="fieldlabel">{t.shortcuts}</div>
-        <label className="field">
-          <span>{t.shortcutToggle}</span>
-          <input
-            type="text"
-            value={s.shortcutToggle}
-            onChange={(e) => set('shortcutToggle', e.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>{t.shortcutStackPop}</span>
-          <input
-            type="text"
-            value={s.shortcutStackPop}
-            onChange={(e) => set('shortcutStackPop', e.target.value)}
-          />
-        </label>
         <div className="note">{t.shortcutHint}</div>
+        {scError && <div className="note scerror">{scError}</div>}
+        <div className="scgroup">{t.scGroupGlobal}</div>
+        {shortcutRow('toggle', t.shortcutToggle, s.shortcutToggle, GLOBAL_DEFAULTS.shortcutToggle)}
+        {shortcutRow(
+          'stackPop',
+          t.shortcutStackPop,
+          s.shortcutStackPop,
+          GLOBAL_DEFAULTS.shortcutStackPop
+        )}
+        <div className="scgroup">{t.scGroupNav}</div>
+        {actionRows('nav')}
+        <div className="scgroup">{t.scGroupList}</div>
+        {actionRows('list')}
+        <div className="scgroup">{t.scGroupTools}</div>
+        {actionRows('tools')}
+        <div className="scrow">
+          <span className="sclabel" />
+          <button className="ghost" onClick={resetAll}>
+            {t.scResetAll}
+          </button>
+        </div>
 
         <div className="sep" />
         <div className="fieldlabel">{t.updates}</div>

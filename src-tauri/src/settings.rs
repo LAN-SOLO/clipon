@@ -24,6 +24,9 @@ pub struct Settings {
     pub shortcut_toggle: String,
     /// Global shortcut: copy the next paste-stack item.
     pub shortcut_stack_pop: String,
+    /// In-app shortcut overrides (action id → combo). The frontend owns the
+    /// action list and defaults; this only stores what the user changed.
+    pub keymap: std::collections::BTreeMap<String, String>,
     /// Capture paused.
     pub paused: bool,
 }
@@ -39,6 +42,7 @@ impl Default for Settings {
             autostart: false,
             shortcut_toggle: "CmdOrCtrl+Shift+V".into(),
             shortcut_stack_pop: "CmdOrCtrl+Shift+B".into(),
+            keymap: Default::default(),
             paused: false,
         }
     }

@@ -31,6 +31,8 @@ export interface Settings {
   autostart: boolean;
   shortcutToggle: string;
   shortcutStackPop: string;
+  /** In-app shortcut overrides (action id → combo); defaults live in shortcuts.ts. */
+  keymap: Record<string, string>;
   paused: boolean;
 }
 

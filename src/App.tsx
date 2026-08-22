@@ -16,6 +16,7 @@ import {
 } from './icons';
 import { SettingsModal } from './components/SettingsModal';
 import { Help } from './components/Help';
+import { ActionId, comboFromEvent, formatCombo, hasRealModifier, resolveKeymap } from './shortcuts';
 
 type View = 'history' | 'stack' | 'snippets';
 
@@ -104,7 +105,11 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [updateAvail, setUpdateAvail] = useState<UpdateInfo | null>(null);
   const [installing, setInstalling] = useState(false);
+  const [selStackId, setSelStackId] = useState<string | null>(null);
+  const [selSnipId, setSelSnipId] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const toastTimer = useRef<number | undefined>(undefined);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   const lang: Lang = settings?.language ?? 'de';
   const t = dicts[lang];
@@ -169,13 +174,157 @@ export default function App() {
     api.setPaused(!paused).then(() => setPaused(!paused));
   };
 
-  const navFilters: { key: Filter; label: string }[] = [
-    { key: 'all', label: t.all },
-    { key: 'pinned', label: t.pinned },
-    { key: 'text', label: t.text },
-    { key: 'links', label: t.links },
-    { key: 'colors', label: t.colors },
-    { key: 'images', label: t.images },
+  // ---- keyboard shortcuts (bindings editable in the settings) -------------
+  const moveSelection = (dir: 1 | -1) => {
+    const pick = <T extends { id: string }>(
+      list: T[],
+      cur: string | null,
+      set: (id: string | null) => void
+    ) => {
+      if (list.length === 0) return;
+      const idx = list.findIndex((x) => x.id === cur);
+      const next =
+        idx === -1
+          ? dir === 1
+            ? 0
+            : list.length - 1
+          : Math.min(list.length - 1, Math.max(0, idx + dir));
+      set(list[next].id);
+    };
+    if (view === 'history') pick(items, selectedId, setSelectedId);
+    else if (view === 'stack') pick(stack, selStackId, setSelStackId);
+    else pick(snippets, selSnipId, setSelSnipId);
+  };
+
+  const runAction = (action: ActionId) => {
+    const filterOf: Partial<Record<ActionId, Filter>> = {
+      filterAll: 'all',
+      filterPinned: 'pinned',
+      filterText: 'text',
+      filterLinks: 'links',
+      filterColors: 'colors',
+      filterImages: 'images',
+    };
+    const curSnippet = snippets.find((s) => s.id === selSnipId) ?? null;
+    if (filterOf[action]) {
+      setView('history');
+      setFilter(filterOf[action]!);
+      return;
+    }
+    switch (action) {
+      case 'viewStack':
+        setView('stack');
+        break;
+      case 'viewSnippets':
+        setView('snippets');
+        break;
+      case 'focusSearch':
+        setView('history');
+        window.setTimeout(() => searchRef.current?.focus(), 0);
+        break;
+      case 'openSettings':
+        setShowSettings(true);
+        break;
+      case 'openHelp':
+        window.dispatchEvent(new CustomEvent('clipon-open-help'));
+        break;
+      case 'togglePause':
+        togglePaused();
+        break;
+      case 'clearHistory':
+        if (window.confirm(t.clearConfirm)) api.clearHistory();
+        break;
+      case 'selectPrev':
+        moveSelection(-1);
+        break;
+      case 'selectNext':
+        moveSelection(1);
+        break;
+      case 'copySelected':
+        if (view === 'history' && selectedId) copyItem(selectedId);
+        else if (view === 'stack' && selStackId) copyItem(selStackId);
+        else if (view === 'snippets' && curSnippet)
+          api.copySnippet(curSnippet.id).then(() => showToast(t.copied));
+        break;
+      case 'pinSelected':
+        if (view === 'history' && selected) api.pinItem(selected.id, !selected.pinned);
+        break;
+      case 'stackAddSelected':
+        if (view === 'history' && selectedId) api.stackAdd(selectedId);
+        break;
+      case 'editSelected':
+        if (view === 'snippets' && curSnippet) setEditSnippet(curSnippet);
+        break;
+      case 'deleteSelected':
+        if (view === 'history' && selectedId) {
+          setSelectedId(null);
+          api.deleteItem(selectedId);
+        } else if (view === 'stack' && selStackId) {
+          setSelStackId(null);
+          api.stackRemove(selStackId);
+        } else if (view === 'snippets' && curSnippet) {
+          setSelSnipId(null);
+          api.deleteSnippet(curSnippet.id).then(refreshSnippets);
+        }
+        break;
+      case 'stackPopNext':
+        api.stackPopCopy().then((item) => {
+          if (item) showToast(`${t.copied}: ${item.preview.slice(0, 40)}`);
+        });
+        break;
+      case 'stackClear':
+        api.stackClear();
+        break;
+      case 'newSnippet':
+        setView('snippets');
+        setEditSnippet('new');
+        break;
+    }
+  };
+  const runActionRef = useRef(runAction);
+  runActionRef.current = runAction;
+
+  const keymap = settings ? resolveKeymap(settings) : null;
+  const keymapRef = useRef(keymap);
+  keymapRef.current = keymap;
+  const modalOpenRef = useRef(false);
+  modalOpenRef.current = showSettings || editSnippet !== null || helpOpen;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const km = keymapRef.current;
+      if (!km || modalOpenRef.current) return;
+      const combo = comboFromEvent(e);
+      if (!combo) return;
+      const action = (Object.keys(km) as ActionId[]).find((a) => km[a] === combo);
+      if (!action) return;
+      const el = e.target as HTMLElement | null;
+      const typing =
+        el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || !!el?.isContentEditable;
+      // while typing, plain keys belong to the text field — only modifier
+      // combos and list navigation (arrows/Enter) reach the keymap
+      if (typing && !hasRealModifier(combo) && !['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) {
+        return;
+      }
+      e.preventDefault();
+      runActionRef.current(action);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // keep the keyboard cursor visible
+  useEffect(() => {
+    document.querySelector('.row.selected')?.scrollIntoView({ block: 'nearest' });
+  }, [selectedId, selStackId, selSnipId, view]);
+
+  const navFilters: { key: Filter; label: string; action: ActionId }[] = [
+    { key: 'all', label: t.all, action: 'filterAll' },
+    { key: 'pinned', label: t.pinned, action: 'filterPinned' },
+    { key: 'text', label: t.text, action: 'filterText' },
+    { key: 'links', label: t.links, action: 'filterLinks' },
+    { key: 'colors', label: t.colors, action: 'filterColors' },
+    { key: 'images', label: t.images, action: 'filterImages' },
   ];
 
   if (!settings) return null;
@@ -191,6 +340,7 @@ export default function App() {
           <button
             key={f.key}
             className={`navbtn ${view === 'history' && filter === f.key ? 'active' : ''}`}
+            title={keymap ? formatCombo(keymap[f.action]) : undefined}
             onClick={() => {
               setView('history');
               setFilter(f.key);
@@ -202,6 +352,7 @@ export default function App() {
         <div className="section">// tools</div>
         <button
           className={`navbtn ${view === 'stack' ? 'active' : ''}`}
+          title={keymap ? formatCombo(keymap.viewStack) : undefined}
           onClick={() => setView('stack')}
         >
           <IconStack /> {t.stack}
@@ -209,6 +360,7 @@ export default function App() {
         </button>
         <button
           className={`navbtn ${view === 'snippets' ? 'active' : ''}`}
+          title={keymap ? formatCombo(keymap.viewSnippets) : undefined}
           onClick={() => setView('snippets')}
         >
           <IconEdit /> {t.snippets}
@@ -219,11 +371,19 @@ export default function App() {
           <span className="led" />
           {paused ? t.paused : t.capturing}
         </div>
-        <button className="navbtn" onClick={togglePaused}>
+        <button
+          className="navbtn"
+          title={keymap ? formatCombo(keymap.togglePause) : undefined}
+          onClick={togglePaused}
+        >
           {paused ? <IconPlay /> : <IconPause />}
           {paused ? t.resume : t.pause}
         </button>
-        <button className="navbtn" onClick={() => setShowSettings(true)}>
+        <button
+          className="navbtn"
+          title={keymap ? formatCombo(keymap.openSettings) : undefined}
+          onClick={() => setShowSettings(true)}
+        >
           <IconGear /> {t.settings}
         </button>
       </div>
@@ -233,6 +393,7 @@ export default function App() {
           <div className="main">
             <div className="toolbar">
               <input
+                ref={searchRef}
                 type="text"
                 placeholder={t.search}
                 value={query}
@@ -369,7 +530,7 @@ export default function App() {
         <div className="main">
           <div className="panelhead">
             <span className="hint">
-              {t.stackHint} <kbd>{settings.shortcutStackPop}</kbd>
+              {t.stackHint} <kbd>{formatCombo(settings.shortcutStackPop)}</kbd>
             </span>
             <button
               className="primary"
@@ -391,7 +552,12 @@ export default function App() {
             {stack.map((item, idx) => {
               const b = badge(item);
               return (
-                <div key={item.id} className="row" onDoubleClick={() => copyItem(item.id)}>
+                <div
+                  key={item.id}
+                  className={`row ${selStackId === item.id ? 'selected' : ''}`}
+                  onClick={() => setSelStackId(item.id)}
+                  onDoubleClick={() => copyItem(item.id)}
+                >
                   <span className="meta">{idx + 1}.</span>
                   <span className={`kbadge ${b.cls}`}>{b.label}</span>
                   {item.kind === 'image' && <Thumb id={item.id} maxDim={96} className="thumb" />}
@@ -421,8 +587,11 @@ export default function App() {
             {snippets.map((s) => (
               <div
                 key={s.id}
-                className="row"
-                onClick={() => api.copySnippet(s.id).then(() => showToast(t.copied))}
+                className={`row ${selSnipId === s.id ? 'selected' : ''}`}
+                onClick={() => {
+                  setSelSnipId(s.id);
+                  api.copySnippet(s.id).then(() => showToast(t.copied));
+                }}
               >
                 <span className="kbadge">txt</span>
                 <span className="preview">
@@ -450,11 +619,14 @@ export default function App() {
           t={t}
           onClose={() => setShowSettings(false)}
           onSave={(s) => {
-            api.setSettings(s).then(() => {
-              setSettings(s);
-              setPaused(s.paused);
-              setShowSettings(false);
-            });
+            api
+              .setSettings(s)
+              .then(() => {
+                setSettings(s);
+                setPaused(s.paused);
+                setShowSettings(false);
+              })
+              .catch((err) => showToast(`${t.saveError} ${String(err)}`));
           }}
         />
       )}
@@ -492,7 +664,7 @@ export default function App() {
         </div>
       )}
 
-      <Help lang={lang} />
+      <Help lang={lang} onOpenChange={setHelpOpen} />
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

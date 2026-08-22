@@ -1,6 +1,6 @@
 [package]
 name = "clipon"
-version = "0.1.2"
+version = "0.2.0"
 description = "clipon — Clipboard-Manager: Verlauf, Snippets und Paste-Stack, lokal verschlüsselt"
 edition = "2021"
 license = "MIT"

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Lang } from '../i18n';
 
 // Selbstständiges Hilfe-System: schwebender ?-Button, First-Run-Tutorial
@@ -91,7 +91,7 @@ const de: Content = {
         '• Cmd+Shift+V — clipon-Fenster ein-/ausblenden, von überall',
         '• Cmd+Shift+B — Paste-Stack: nächsten Eintrag kopieren',
         'Das Schließen des Fensters beendet clipon nicht — es läuft im Tray weiter und zeichnet auf. Beenden geht über das Tray-Menü.',
-        'Beide Kürzel lassen sich in den Einstellungen ändern.',
+        'Alle Kürzel lassen sich im Kürzel-Editor der Einstellungen frei belegen.',
       ],
     },
     {
@@ -167,9 +167,10 @@ const de: Content = {
       id: 'shortcuts',
       title: 'Kürzel',
       body: [
-        '• Cmd/Ctrl+Shift+V — Fenster ein-/ausblenden',
-        '• Cmd/Ctrl+Shift+B — Paste-Stack: nächsten Eintrag kopieren',
-        'Beide Kürzel sind global (funktionieren in jeder App) und in den Einstellungen frei belegbar — Format z. B. „CmdOrCtrl+Shift+V“ oder „Alt+Space“.',
+        '• Cmd/Ctrl+Shift+V — Fenster ein-/ausblenden (global, funktioniert in jeder App)',
+        '• Cmd/Ctrl+Shift+B — Paste-Stack: nächsten Eintrag kopieren (global)',
+        'In der App hat jede Aktion ein Kürzel: Cmd/Ctrl+1–8 wechseln Filter und Ansichten, Pfeiltasten bewegen die Auswahl, Enter kopiert sie, Cmd/Ctrl+P pinnt, Cmd/Ctrl+S legt in den Stack, Backspace löscht, Cmd/Ctrl+E bearbeitet Snippets, Cmd/Ctrl+F springt in die Suche, F1 öffnet diese Hilfe.',
+        'Alle Kürzel — global wie in der App — belegst du im Kürzel-Editor der Einstellungen frei: auf ein Kürzel klicken, neue Tastenkombination drücken. Konflikte werden erkannt, ↺ setzt einzelne zurück, „Alle zurücksetzen" den ganzen Satz.',
       ],
     },
     {
@@ -192,7 +193,7 @@ const de: Content = {
         '• Bilder mitschneiden — Bild-Inhalte an/aus',
         '• Beim Leeren Pins behalten — Schutz für Angepinntes',
         '• Beim Anmelden starten — clipon automatisch mit dem System starten',
-        '• Kürzel — beide globalen Kürzel frei belegen',
+        '• Kürzel — Editor für alle Kürzel (global & in der App): klicken, Tasten drücken, fertig',
       ],
     },
     {
@@ -274,7 +275,7 @@ const en: Content = {
         '• Cmd+Shift+V — show/hide the clipon window, from anywhere',
         '• Cmd+Shift+B — paste stack: copy the next item',
         'Closing the window does not quit clipon — it keeps running in the tray and keeps capturing. Quit via the tray menu.',
-        'Both shortcuts can be changed in Settings.',
+        'Every shortcut can be changed in the shortcut editor in Settings.',
       ],
     },
     {
@@ -350,9 +351,10 @@ const en: Content = {
       id: 'shortcuts',
       title: 'Shortcuts',
       body: [
-        '• Cmd/Ctrl+Shift+V — show/hide the window',
-        '• Cmd/Ctrl+Shift+B — paste stack: copy next item',
-        'Both shortcuts are global (they work in any app) and freely configurable in Settings — e.g. “CmdOrCtrl+Shift+V” or “Alt+Space”.',
+        '• Cmd/Ctrl+Shift+V — show/hide the window (global, works in any app)',
+        '• Cmd/Ctrl+Shift+B — paste stack: copy next item (global)',
+        'Inside the app every action has a shortcut: Cmd/Ctrl+1–8 switch filters and views, arrow keys move the selection, Enter copies it, Cmd/Ctrl+P pins, Cmd/Ctrl+S adds to the stack, Backspace deletes, Cmd/Ctrl+E edits snippets, Cmd/Ctrl+F jumps to search, F1 opens this help.',
+        'Every shortcut — global and in-app — is freely configurable in the shortcut editor in Settings: click a shortcut, press the new key combination. Conflicts are detected, ↺ resets one binding, “Reset all” the whole set.',
       ],
     },
     {
@@ -375,7 +377,7 @@ const en: Content = {
         '• Capture images — image contents on/off',
         '• Keep pins when clearing — protection for pinned items',
         '• Start at login — launch clipon with the system',
-        '• Shortcuts — both global shortcuts, freely configurable',
+        '• Shortcuts — the editor for every binding (global & in-app): click, press keys, done',
       ],
     },
     {
@@ -401,7 +403,13 @@ const en: Content = {
 
 const SEEN_KEY = 'clipon.tutorialSeen';
 
-export function Help({ lang }: { lang: Lang }) {
+export function Help({
+  lang,
+  onOpenChange,
+}: {
+  lang: Lang;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const c = lang === 'de' ? de : en;
   const [mode, setMode] = useState<'closed' | 'tutorial' | 'manual'>(() =>
     localStorage.getItem(SEEN_KEY) ? 'closed' : 'tutorial'
@@ -409,6 +417,17 @@ export function Help({ lang }: { lang: Lang }) {
   const [step, setStep] = useState(0);
   const [sel, setSel] = useState(c.sections[0].id);
   const [q, setQ] = useState('');
+
+  useEffect(() => {
+    onOpenChange?.(mode !== 'closed');
+  }, [mode, onOpenChange]);
+
+  // the help shortcut in App opens the manual through this event
+  useEffect(() => {
+    const open = () => setMode('manual');
+    window.addEventListener('clipon-open-help', open);
+    return () => window.removeEventListener('clipon-open-help', open);
+  }, []);
 
   const close = () => {
     localStorage.setItem(SEEN_KEY, '1');
