@@ -98,7 +98,7 @@ const de: Content = {
       title: 'Privatsphäre & Pause',
       body: [
         'Die Zwischenablage ist ein sensibler Ort. Wenn clipon gerade nichts mitschneiden soll: Pause — per Seitenleiste oder Tray.',
-        'Große Texte lassen sich per Limit ausschließen, Bilder komplett abschalten. Und nichts verlässt je deinen Rechner.',
+        'Große Texte lassen sich per Limit ausschließen (in KB, Standard 512 — geprüft, bevor gespeichert wird), Bilder komplett abschalten. Und nichts verlässt je deinen Rechner.',
       ],
     },
   ],
@@ -169,7 +169,8 @@ const de: Content = {
       body: [
         '• Cmd/Ctrl+Shift+V — Fenster ein-/ausblenden (global, funktioniert in jeder App)',
         '• Cmd/Ctrl+Shift+B — Paste-Stack: nächsten Eintrag kopieren (global)',
-        'In der App hat jede Aktion ein Kürzel: Cmd/Ctrl+1–8 wechseln Filter und Ansichten, Pfeiltasten bewegen die Auswahl, Enter kopiert sie, Cmd/Ctrl+P pinnt, Cmd/Ctrl+S legt in den Stack, Backspace löscht, Cmd/Ctrl+E bearbeitet Snippets, Cmd/Ctrl+F springt in die Suche, F1 öffnet diese Hilfe.',
+        'In der App hat jede Aktion ein Kürzel: Cmd/Ctrl+1–8 wechseln Filter und Ansichten, Pfeiltasten bewegen die Auswahl, Enter kopiert sie, Cmd/Ctrl+P pinnt, Cmd/Ctrl+S legt in den Stack, Backspace löscht, Cmd/Ctrl+E bearbeitet Snippets, Cmd/Ctrl+F springt in die Suche, Cmd/Ctrl+, öffnet die Einstellungen, F1 diese Hilfe.',
+        'Dazu die Werkzeug-Kürzel: Cmd/Ctrl+Shift+P pausiert die Aufnahme, Cmd/Ctrl+Shift+Backspace leert den Verlauf, Cmd/Ctrl+Shift+N kopiert den nächsten Stack-Eintrag (in der App — global bleibt Cmd/Ctrl+Shift+B), Cmd/Ctrl+Shift+X leert den Stack, Cmd/Ctrl+N legt ein neues Snippet an.',
         'Alle Kürzel — global wie in der App — belegst du im Kürzel-Editor der Einstellungen frei: auf ein Kürzel klicken, neue Tastenkombination drücken. Konflikte werden erkannt, ↺ setzt einzelne zurück, „Alle zurücksetzen" den ganzen Satz.',
       ],
     },
@@ -189,7 +190,7 @@ const de: Content = {
       body: [
         '• Sprache — Deutsch / English',
         '• Verlaufsgröße — wie viele Einträge behalten werden (Pins zählen nicht gegen das Aufräumen)',
-        '• Text ignorieren ab — sehr große Kopien gar nicht erst aufnehmen (0 = nie)',
+        '• Text ignorieren ab — sehr große Kopien gar nicht erst aufnehmen; Wert in KB, Standard 512 (0 = nie)',
         '• Bilder mitschneiden — Bild-Inhalte an/aus',
         '• Beim Leeren Pins behalten — Schutz für Angepinntes',
         '• Beim Anmelden starten — clipon automatisch mit dem System starten',
@@ -282,7 +283,7 @@ const en: Content = {
       title: 'Privacy & pause',
       body: [
         'The clipboard is a sensitive place. When clipon shouldn’t capture: pause it — via the sidebar or the tray.',
-        'Large texts can be excluded by a size limit, images can be turned off entirely. And nothing ever leaves your machine.',
+        'Large texts can be excluded by a size limit (in KB, default 512 — checked before saving), images can be turned off entirely. And nothing ever leaves your machine.',
       ],
     },
   ],
@@ -353,7 +354,8 @@ const en: Content = {
       body: [
         '• Cmd/Ctrl+Shift+V — show/hide the window (global, works in any app)',
         '• Cmd/Ctrl+Shift+B — paste stack: copy next item (global)',
-        'Inside the app every action has a shortcut: Cmd/Ctrl+1–8 switch filters and views, arrow keys move the selection, Enter copies it, Cmd/Ctrl+P pins, Cmd/Ctrl+S adds to the stack, Backspace deletes, Cmd/Ctrl+E edits snippets, Cmd/Ctrl+F jumps to search, F1 opens this help.',
+        'Inside the app every action has a shortcut: Cmd/Ctrl+1–8 switch filters and views, arrow keys move the selection, Enter copies it, Cmd/Ctrl+P pins, Cmd/Ctrl+S adds to the stack, Backspace deletes, Cmd/Ctrl+E edits snippets, Cmd/Ctrl+F jumps to search, Cmd/Ctrl+, opens Settings, F1 this help.',
+        'Plus the tool shortcuts: Cmd/Ctrl+Shift+P pauses capturing, Cmd/Ctrl+Shift+Backspace clears the history, Cmd/Ctrl+Shift+N copies the next stack item (in-app — globally it stays Cmd/Ctrl+Shift+B), Cmd/Ctrl+Shift+X clears the stack, Cmd/Ctrl+N creates a new snippet.',
         'Every shortcut — global and in-app — is freely configurable in the shortcut editor in Settings: click a shortcut, press the new key combination. Conflicts are detected, ↺ resets one binding, “Reset all” the whole set.',
       ],
     },
@@ -373,7 +375,7 @@ const en: Content = {
       body: [
         '• Language — Deutsch / English',
         '• History size — how many items to keep (pins don’t count against cleanup)',
-        '• Ignore text above — skip very large copies entirely (0 = never)',
+        '• Ignore text above — skip very large copies entirely; value in KB, default 512 (0 = never)',
         '• Capture images — image contents on/off',
         '• Keep pins when clearing — protection for pinned items',
         '• Start at login — launch clipon with the system',
