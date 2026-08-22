@@ -190,6 +190,26 @@ pub fn copy_item(app: AppHandle, st: State<'_, AppState>, id: Uuid) -> Result<()
     Ok(())
 }
 
+/// Adds text to the history and puts it on the clipboard — used by the color
+/// picker and the format-conversion buttons in the detail pane.
+#[tauri::command]
+pub fn add_text_item(app: AppHandle, st: State<'_, AppState>, text: String) -> Result<(), String> {
+    if text.trim().is_empty() {
+        return Err("leerer Text".into());
+    }
+    write_clipboard_text(&st, &text)?;
+    let limit = st.settings.lock().unwrap().history_limit as usize;
+    let evicted = {
+        let mut store = st.store.lock().unwrap();
+        store.add_text(&text);
+        store.enforce_limit(limit.max(1))
+    };
+    st.delete_blobs(&evicted);
+    st.persist();
+    let _ = app.emit("history-changed", ());
+    Ok(())
+}
+
 #[tauri::command]
 pub fn pin_item(app: AppHandle, st: State<'_, AppState>, id: Uuid, pinned: bool) {
     st.store.lock().unwrap().set_pinned(id, pinned);

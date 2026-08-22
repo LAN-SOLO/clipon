@@ -198,6 +198,7 @@ fn main() {
             commands::get_item_text,
             commands::get_item_image,
             commands::copy_item,
+            commands::add_text_item,
             commands::pin_item,
             commands::delete_item,
             commands::clear_history,

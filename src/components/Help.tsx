@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Lang } from '../i18n';
+import { IconLogo } from '../icons';
 
-// Selbstständiges Hilfe-System: schwebender ?-Button, First-Run-Tutorial
-// und durchsuchbares Handbuch. Inhalte leben bewusst hier (nicht in i18n.ts),
+// Selbstständiges Hilfe-System: schwebender ?-Button, First-Run-Tutorial,
+// interaktive UI-Tour (Spotlight auf die echten Bedienelemente) und
+// durchsuchbares Handbuch. Inhalte leben bewusst hier (nicht in i18n.ts),
 // damit UI-Strings und Doku getrennt gepflegt werden können.
 
 interface Step {
@@ -16,10 +18,19 @@ interface Section {
   body: string[];
 }
 
+/** Ein Tour-Schritt zeigt auf ein echtes UI-Element (per data-tour-Anker). */
+interface TourStep {
+  sel: string;
+  title: string;
+  body: string;
+}
+
 interface Content {
   labels: {
     fab: string;
     tutorial: string;
+    tour: string;
+    startTour: string;
     manual: string;
     search: string;
     next: string;
@@ -30,6 +41,7 @@ interface Content {
     noResults: string;
   };
   tutorial: Step[];
+  tour: TourStep[];
   sections: Section[];
 }
 
@@ -37,6 +49,8 @@ const de: Content = {
   labels: {
     fab: 'Hilfe & Handbuch',
     tutorial: 'Tutorial',
+    tour: 'Tour',
+    startTour: 'Tour durch die App',
     manual: 'Handbuch',
     search: 'Handbuch durchsuchen …',
     next: 'Weiter',
@@ -67,8 +81,17 @@ const de: Content = {
     {
       title: 'Pins',
       body: [
-        'Wichtiges pinnst du an — angepinnte Einträge überleben das Aufräumen und das Leeren des Verlaufs.',
+        'Wichtiges pinnst du an: Fahre über einen Eintrag und klicke das Pin-Symbol — es färbt sich gelb, der Eintrag trägt einen Punkt.',
+        'Angepinnte Einträge überleben das Aufräumen und das Leeren des Verlaufs. Der Filter „Pins“ zeigt sie alle auf einen Blick.',
         'Der Verlauf hält standardmäßig 500 Einträge; die ältesten unangepinnten fliegen zuerst raus.',
+      ],
+    },
+    {
+      title: 'Farben & Bilder',
+      body: [
+        'Kopierte Farbwerte (#38bdf8, rgb(…), hsl(…)) werden erkannt und mit Farbfeld angezeigt. Die Detail-Ansicht rechnet jede Farbe in Hex, RGB und HSL um — ein Klick kopiert das Format.',
+        'Im Filter „Farben“ wählst du über „Farbe wählen“ neue Farben — der System-Farbwähler hat eine Pipette, mit der du jede Farbe vom Bildschirm pickst.',
+        'Bilder landen automatisch im Verlauf: Screenshots, kopierte Grafiken — und auch Bilddateien, die du im Finder kopierst. Andere Dateien erscheinen als Pfad-Eintrag mit file-Badge.',
       ],
     },
     {
@@ -102,6 +125,53 @@ const de: Content = {
       ],
     },
   ],
+  tour: [
+    {
+      sel: '[data-tour="filters"]',
+      title: 'Filter',
+      body: 'Der Verlauf, gefiltert: Alles, Pins, Text, Links, Farben, Bilder. „Pins“ zeigt Angepinntes — es überlebt Aufräumen und Leeren. „Farben“ hat oben einen Farbwähler mit Pipette.',
+    },
+    {
+      sel: '[data-tour="search"]',
+      title: 'Suche',
+      body: 'Volltextsuche über den ganzen Verlauf — Bilder findest du über ihren Dateinamen. Der Papierkorb daneben leert den Verlauf (Pins bleiben).',
+    },
+    {
+      sel: '[data-tour="list"]',
+      title: 'Die Liste',
+      body: 'Klick wählt aus, Doppelklick kopiert zurück in die Zwischenablage. Beim Überfahren erscheinen die Aktionen: Kopieren, Anpinnen, In den Stack, Löschen.',
+    },
+    {
+      sel: '[data-tour="detail"]',
+      title: 'Details',
+      body: 'Rechts siehst du den kompletten Inhalt samt Statistiken. Bei Farben: großes Farbfeld plus Hex-, RGB- und HSL-Umrechnung — jedes Format einzeln kopierbar.',
+    },
+    {
+      sel: '[data-tour="stack"]',
+      title: 'Paste-Stack',
+      body: 'Sammle mehrere Einträge und hole sie in Reihenfolge zurück — ideal für Formulare. Cmd+Shift+B kopiert den nächsten, von überall.',
+    },
+    {
+      sel: '[data-tour="snippets"]',
+      title: 'Snippets',
+      body: 'Feste Textbausteine mit Namen — Adresse, Signatur, Standardantworten. Ein Klick, kopiert. Snippets verfallen nie.',
+    },
+    {
+      sel: '[data-tour="pause"]',
+      title: 'Pause',
+      body: 'Wenn clipon gerade nichts mitschneiden soll (Passwörter, Sensibles): Aufnahme pausieren — auch über das Tray-Menü.',
+    },
+    {
+      sel: '[data-tour="settings"]',
+      title: 'Einstellungen',
+      body: 'Sprache, Verlaufsgröße, Text-Limit, Autostart, Updates — und der Kürzel-Editor, in dem du jede Tastenkombination frei belegst.',
+    },
+    {
+      sel: '[data-tour="helpbtn"]',
+      title: 'Hilfe',
+      body: 'Tutorial, diese Tour und das durchsuchbare Handbuch findest du jederzeit hier — oder über den ?-Knopf unten rechts. Viel Spaß mit clipon.',
+    },
+  ],
   sections: [
     {
       id: 'history',
@@ -112,7 +182,7 @@ const de: Content = {
         '• Klick — Eintrag auswählen, Details rechts',
         '• Doppelklick oder Kopieren-Symbol — zurück in die Zwischenablage',
         '• Symbole am Eintrag (bei Maus darüber): Kopieren, Anpinnen, In den Stack, Löschen',
-        'Der Typ jedes Eintrags wird automatisch erkannt und als Badge angezeigt: url (Links), @ (E-Mail), col (Farben, mit Farbfeld), { } (Code), img (Bilder), txt (alles andere).',
+        'Der Typ jedes Eintrags wird automatisch erkannt und als Badge angezeigt: url (Links), @ (E-Mail), col (Farben, mit Farbfeld), { } (Code), img (Bilder), file (kopierte Dateien), txt (alles andere).',
         'Die Verlaufsgröße ist einstellbar (Standard 500 Einträge). Ist das Limit erreicht, werden die ältesten unangepinnten Einträge entfernt.',
       ],
     },
@@ -156,11 +226,25 @@ const de: Content = {
       ],
     },
     {
+      id: 'colors',
+      title: 'Farben',
+      body: [
+        'clipon erkennt kopierte Farbwerte automatisch: #38bdf8, #fff, #38bdf8cc, rgb(56, 189, 248), rgba(…), hsl(199, 89%, 60%) und hsla(…). Sie bekommen das col-Badge und ein Farbfeld in der Liste.',
+        'Die Detail-Ansicht zeigt ein großes Farbfeld und rechnet die Farbe in alle Formate um — Hex, RGB und HSL. Das Kopieren-Symbol neben einem Format kopiert es und legt es zugleich als neuen Eintrag in den Verlauf.',
+        'Farben wählen und picken: Im Filter „Farben“ sitzt oben der Farbwähler.',
+        '• „Farbe wählen“ öffnet den System-Farbwähler — auf dem Mac inklusive Pipette, mit der du jede Farbe irgendwo auf dem Bildschirm aufnimmst',
+        '• „Merken & kopieren“ legt die gewählte Farbe als Hex-Wert in Verlauf und Zwischenablage',
+        'So wird der Farben-Filter zur Palette: Alle gepickten und kopierten Farben bleiben gesammelt, pinne die wichtigsten an.',
+      ],
+    },
+    {
       id: 'images',
-      title: 'Bilder',
+      title: 'Bilder & Dateien',
       body: [
         'Kopierte Bilder (Screenshots, Grafiken) landen als Vorschau im Verlauf und lassen sich wie Text zurückkopieren.',
-        'Jedes Bild wird als eigene, einzeln verschlüsselte Datei gespeichert. Wer Bilder nicht mitschneiden will, schaltet „Bilder mitschneiden“ in den Einstellungen ab.',
+        'Auch Bilddateien zählen: Kopierst du im Finder oder Explorer eine PNG-, JPEG-, GIF-, WebP-, BMP- oder TIFF-Datei, liest clipon das Bild ein und zeigt es mit Dateinamen und Abmessungen — die Suche findet es über den Dateinamen.',
+        'Andere kopierte Dateien (PDF, ZIP, …) erscheinen als Pfad-Eintrag mit file-Badge — praktisch, um Pfade erneut einzufügen.',
+        'Jedes Bild wird als eigene, einzeln verschlüsselte Datei gespeichert. Wer Bilder nicht mitschneiden will, schaltet „Bilder mitschneiden“ in den Einstellungen ab — sehr große Bilddateien (über 64 MB) werden übersprungen.',
       ],
     },
     {
@@ -222,6 +306,8 @@ const en: Content = {
   labels: {
     fab: 'Help & manual',
     tutorial: 'Tutorial',
+    tour: 'Tour',
+    startTour: 'Tour of the app',
     manual: 'Manual',
     search: 'Search the manual …',
     next: 'Next',
@@ -252,8 +338,17 @@ const en: Content = {
     {
       title: 'Pins',
       body: [
-        'Pin what matters — pinned items survive cleanup and clearing the history.',
+        'Pin what matters: hover over an item and click the pin icon — it turns yellow and the item gets a dot.',
+        'Pinned items survive cleanup and clearing the history. The “Pins” filter shows them all at a glance.',
         'The history keeps 500 items by default; the oldest unpinned ones go first.',
+      ],
+    },
+    {
+      title: 'Colors & images',
+      body: [
+        'Copied color values (#38bdf8, rgb(…), hsl(…)) are detected and shown with a swatch. The detail pane converts every color to hex, RGB and HSL — one click copies the format.',
+        'In the “Colors” filter, use “Pick color” to add new ones — the system color picker includes an eyedropper for picking any color on your screen.',
+        'Images land in the history automatically: screenshots, copied graphics — and image files copied in Finder. Other files appear as a path entry with a file badge.',
       ],
     },
     {
@@ -287,6 +382,53 @@ const en: Content = {
       ],
     },
   ],
+  tour: [
+    {
+      sel: '[data-tour="filters"]',
+      title: 'Filters',
+      body: 'The history, filtered: Everything, Pins, Text, Links, Colors, Images. “Pins” shows pinned items — they survive cleanup and clearing. “Colors” has a color picker with an eyedropper on top.',
+    },
+    {
+      sel: '[data-tour="search"]',
+      title: 'Search',
+      body: 'Full-text search across the whole history — images are found by their file name. The trash icon next to it clears the history (pins survive).',
+    },
+    {
+      sel: '[data-tour="list"]',
+      title: 'The list',
+      body: 'Click selects, double-click copies back to the clipboard. On hover the actions appear: copy, pin, add to stack, delete.',
+    },
+    {
+      sel: '[data-tour="detail"]',
+      title: 'Details',
+      body: 'The right pane shows the full content plus statistics. For colors: a large swatch plus hex, RGB and HSL conversion — each format copyable on its own.',
+    },
+    {
+      sel: '[data-tour="stack"]',
+      title: 'Paste stack',
+      body: 'Collect several items and bring them back in order — ideal for forms. Cmd+Shift+B copies the next one, from anywhere.',
+    },
+    {
+      sel: '[data-tour="snippets"]',
+      title: 'Snippets',
+      body: 'Saved text blocks with a name — address, signature, standard replies. One click, copied. Snippets never expire.',
+    },
+    {
+      sel: '[data-tour="pause"]',
+      title: 'Pause',
+      body: 'When clipon shouldn’t capture (passwords, sensitive data): pause capturing — also available from the tray menu.',
+    },
+    {
+      sel: '[data-tour="settings"]',
+      title: 'Settings',
+      body: 'Language, history size, text limit, autostart, updates — and the shortcut editor where every key binding is yours to change.',
+    },
+    {
+      sel: '[data-tour="helpbtn"]',
+      title: 'Help',
+      body: 'Tutorial, this tour and the searchable manual live here — or behind the ? button in the bottom right. Enjoy clipon.',
+    },
+  ],
   sections: [
     {
       id: 'history',
@@ -297,7 +439,7 @@ const en: Content = {
         '• Click — select item, details on the right',
         '• Double-click or the copy icon — back to the clipboard',
         '• Icons on hover: copy, pin, add to stack, delete',
-        'Each item’s type is detected automatically and shown as a badge: url (links), @ (email), col (colors, with a swatch), { } (code), img (images), txt (everything else).',
+        'Each item’s type is detected automatically and shown as a badge: url (links), @ (email), col (colors, with a swatch), { } (code), img (images), file (copied files), txt (everything else).',
         'The history size is configurable (default 500 items). When the limit is reached, the oldest unpinned items are removed.',
       ],
     },
@@ -341,11 +483,25 @@ const en: Content = {
       ],
     },
     {
+      id: 'colors',
+      title: 'Colors',
+      body: [
+        'clipon detects copied color values automatically: #38bdf8, #fff, #38bdf8cc, rgb(56, 189, 248), rgba(…), hsl(199, 89%, 60%) and hsla(…). They get the col badge and a swatch in the list.',
+        'The detail pane shows a large swatch and converts the color to every format — hex, RGB and HSL. The copy icon next to a format copies it and files it as a new history entry at the same time.',
+        'Picking colors: the color bar sits on top of the “Colors” filter.',
+        '• “Pick color” opens the system color picker — on the Mac including an eyedropper that samples any color anywhere on your screen',
+        '• “Save & copy” puts the chosen color into the history and onto the clipboard as a hex value',
+        'This turns the Colors filter into a palette: every picked and copied color stays collected — pin the important ones.',
+      ],
+    },
+    {
       id: 'images',
-      title: 'Images',
+      title: 'Images & files',
       body: [
         'Copied images (screenshots, graphics) appear as previews in the history and can be copied back just like text.',
-        'Each image is stored as its own individually encrypted file. If you don’t want images captured, disable “Capture images” in Settings.',
+        'Image files count too: copy a PNG, JPEG, GIF, WebP, BMP or TIFF file in Finder or Explorer and clipon reads the image and shows it with file name and dimensions — search finds it by file name.',
+        'Other copied files (PDF, ZIP, …) appear as a path entry with the file badge — handy for pasting paths again.',
+        'Each image is stored as its own individually encrypted file. If you don’t want images captured, disable “Capture images” in Settings — very large image files (over 64 MB) are skipped.',
       ],
     },
     {
@@ -413,12 +569,14 @@ export function Help({
   onOpenChange?: (open: boolean) => void;
 }) {
   const c = lang === 'de' ? de : en;
-  const [mode, setMode] = useState<'closed' | 'tutorial' | 'manual'>(() =>
+  const [mode, setMode] = useState<'closed' | 'tutorial' | 'manual' | 'tour'>(() =>
     localStorage.getItem(SEEN_KEY) ? 'closed' : 'tutorial'
   );
   const [step, setStep] = useState(0);
   const [sel, setSel] = useState(c.sections[0].id);
   const [q, setQ] = useState('');
+  const [tourIdx, setTourIdx] = useState(0);
+  const [spot, setSpot] = useState<DOMRect | null>(null);
 
   useEffect(() => {
     onOpenChange?.(mode !== 'closed');
@@ -435,7 +593,44 @@ export function Help({
     localStorage.setItem(SEEN_KEY, '1');
     setMode('closed');
     setStep(0);
+    setTourIdx(0);
   };
+
+  const startTour = () => {
+    setTourIdx(0);
+    setMode('tour');
+  };
+
+  // spotlight: measure the current tour target; re-measure on resize
+  useEffect(() => {
+    if (mode !== 'tour') return;
+    const measure = () => {
+      const el = document.querySelector(c.tour[tourIdx]?.sel ?? '');
+      setSpot(el ? el.getBoundingClientRect() : null);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [mode, tourIdx, c]);
+
+  // skip tour steps whose anchor is not in the DOM (e.g. other view active)
+  useEffect(() => {
+    if (mode !== 'tour' || spot !== null) return;
+    if (document.querySelector(c.tour[tourIdx]?.sel ?? '')) return;
+    if (tourIdx < c.tour.length - 1) setTourIdx(tourIdx + 1);
+    else close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, tourIdx, spot]);
+
+  useEffect(() => {
+    if (mode !== 'tour') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   const query = q.trim().toLowerCase();
   const filtered = query
@@ -453,11 +648,58 @@ export function Help({
       <button className="hlp-fab" title={c.labels.fab} onClick={() => setMode('manual')}>
         ?
       </button>
-      {mode !== 'closed' && (
+      {mode === 'tour' && spot && (
+        <div className="tour-layer">
+          <div
+            className="tour-hole"
+            style={{
+              top: spot.top - 5,
+              left: spot.left - 5,
+              width: spot.width + 10,
+              height: spot.height + 10,
+            }}
+          />
+          <div
+            className="tour-tip"
+            style={{
+              left: Math.min(Math.max(spot.left, 12), window.innerWidth - 332),
+              ...(spot.bottom + 220 < window.innerHeight
+                ? { top: spot.bottom + 14 }
+                : { bottom: window.innerHeight - spot.top + 14 }),
+            }}
+          >
+            <div className="hlp-step-count">
+              {c.labels.stepOf(tourIdx + 1, c.tour.length)}
+            </div>
+            <h3>{c.tour[tourIdx].title}</h3>
+            <p>{c.tour[tourIdx].body}</p>
+            <div className="tour-nav">
+              <button className="hlp-ghost" onClick={close}>
+                {c.labels.skip}
+              </button>
+              <span className="hlp-spacer" />
+              {tourIdx > 0 && (
+                <button onClick={() => setTourIdx(tourIdx - 1)}>{c.labels.back}</button>
+              )}
+              {tourIdx < c.tour.length - 1 ? (
+                <button className="hlp-primary" onClick={() => setTourIdx(tourIdx + 1)}>
+                  {c.labels.next}
+                </button>
+              ) : (
+                <button className="hlp-primary" onClick={close}>
+                  {c.labels.done}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {(mode === 'tutorial' || mode === 'manual') && (
         <div className="hlp-overlay" onClick={close}>
           <div className="hlp-modal" onClick={(e) => e.stopPropagation()}>
             <div className="hlp-head">
               <span className="hlp-brand">
+                <IconLogo size={18} />
                 <span className="hlp-name">clipon</span>
                 <span className="hlp-dot">.</span>
               </span>
@@ -469,6 +711,9 @@ export function Help({
                 }}
               >
                 {c.labels.tutorial}
+              </button>
+              <button className="hlp-tab" onClick={startTour}>
+                {c.labels.tour}
               </button>
               <button
                 className={`hlp-tab ${mode === 'manual' ? 'active' : ''}`}
@@ -514,9 +759,12 @@ export function Help({
                       {c.labels.next}
                     </button>
                   ) : (
-                    <button className="hlp-primary" onClick={close}>
-                      {c.labels.done}
-                    </button>
+                    <>
+                      <button className="hlp-primary" onClick={startTour}>
+                        {c.labels.startTour}
+                      </button>
+                      <button onClick={close}>{c.labels.done}</button>
+                    </>
                   )}
                 </div>
               </div>

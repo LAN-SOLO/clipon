@@ -37,8 +37,13 @@ Website: https://lan-solo.de/de/tools/clipon
   Dock-Klick öffnet wieder (macOS Reopen).
 - [x] **Phase 5 — Updater:** signierte In-App-Updates (tauri-plugin-updater),
   Endpoint `github.com/LAN-SOLO/clipon/releases/latest/download/latest.json`.
-- [ ] **Phase 6 — später:** Regeln pro Quell-App, Overlay am Cursor, direktes
-  Einfügen (Bedienungshilfen), Datei-Einträge, clipon pinned (12 €/Jahr).
+- [x] **Phase 6 — v0.3.0:** Logo in Sidebar & Hilfe, Farb-Studio (Erkennung auch
+  für `rgb()/hsl()` mit Leerzeichen, System-Farbwähler mit Pipette, Hex/RGB/HSL-
+  Umrechnung im Detail), Bilddateien aus dem Finder als Bild-Einträge (andere
+  Dateien als Pfad mit `file`-Badge, Suche findet Bilder per Dateiname),
+  Filter-Leerzustände mit Erklärung, interaktive UI-Tour, Hilfe-Knopf in der Sidebar.
+- [ ] **Phase 7 — später:** Regeln pro Quell-App, Overlay am Cursor, direktes
+  Einfügen (Bedienungshilfen), clipon pinned (12 €/Jahr).
 
 ## Shortcuts (Standard)
 

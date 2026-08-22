@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 export type ItemKind = 'text' | 'image';
-export type Detected = 'plain' | 'url' | 'email' | 'color' | 'code';
+export type Detected = 'plain' | 'url' | 'email' | 'color' | 'code' | 'file';
 export type Filter = 'all' | 'pinned' | 'text' | 'links' | 'images' | 'colors';
 
 export interface ClipItem {
@@ -52,6 +52,8 @@ export const api = {
   getItemImage: (id: string, maxDim?: number) =>
     invoke<string>('get_item_image', { id, maxDim: maxDim ?? null }),
   copyItem: (id: string) => invoke<void>('copy_item', { id }),
+  /** Adds text to the history AND puts it on the clipboard (color picker, format conversion). */
+  addTextItem: (text: string) => invoke<void>('add_text_item', { text }),
   pinItem: (id: string, pinned: boolean) => invoke<void>('pin_item', { id, pinned }),
   deleteItem: (id: string) => invoke<void>('delete_item', { id }),
   clearHistory: () => invoke<void>('clear_history'),

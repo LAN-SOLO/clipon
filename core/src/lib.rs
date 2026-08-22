@@ -31,6 +31,8 @@ pub enum Detected {
     Email,
     Color,
     Code,
+    /// File path(s) copied e.g. from the system file manager.
+    File,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +106,16 @@ fn single_token(s: &str) -> bool {
 
 pub fn detect(text: &str) -> Detected {
     let t = text.trim();
+    // functional color notations may contain spaces: rgb(56, 189, 248)
+    if !t.contains('\n') && t.ends_with(')') {
+        let lower = t.to_lowercase();
+        if ["rgb(", "rgba(", "hsl(", "hsla("]
+            .iter()
+            .any(|p| lower.starts_with(p))
+        {
+            return Detected::Color;
+        }
+    }
     if single_token(t) {
         let lower = t.to_lowercase();
         if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("www.")
@@ -115,9 +127,6 @@ pub fn detect(text: &str) -> Detected {
             if (l == 3 || l == 6 || l == 8) && rest.chars().all(|c| c.is_ascii_hexdigit()) {
                 return Detected::Color;
             }
-        }
-        if lower.starts_with("rgb(") || lower.starts_with("rgba(") || lower.starts_with("hsl(") {
-            return Detected::Color;
         }
         if let Some((local, domain)) = t.split_once('@') {
             if !local.is_empty() && domain.contains('.') && !domain.ends_with('.') {
@@ -158,6 +167,12 @@ pub fn make_preview(text: &str) -> String {
 
 impl Store {
     pub fn add_text(&mut self, text: &str) -> AddOutcome {
+        self.add_text_as(text, detect(text))
+    }
+
+    /// Like `add_text`, but with the type set by the caller — used for
+    /// content whose type the caller knows better (e.g. copied file paths).
+    pub fn add_text_as(&mut self, text: &str, detected: Detected) -> AddOutcome {
         let hash = fnv1a(text.as_bytes());
         let now = Utc::now();
         if let Some(pos) = self
@@ -179,7 +194,7 @@ impl Store {
             image_file: None,
             preview: make_preview(text),
             chars: text.chars().count(),
-            detected: detect(text),
+            detected,
             pinned: false,
             created_at: now,
             last_copied_at: now,
@@ -191,7 +206,14 @@ impl Store {
         AddOutcome { id, deduped: false }
     }
 
-    pub fn add_image(&mut self, image_file: &str, hash: u64, width: u32, height: u32) -> AddOutcome {
+    pub fn add_image(
+        &mut self,
+        image_file: &str,
+        hash: u64,
+        width: u32,
+        height: u32,
+        label: Option<&str>,
+    ) -> AddOutcome {
         let now = Utc::now();
         if let Some(pos) = self
             .items
@@ -210,7 +232,10 @@ impl Store {
             kind: ItemKind::Image,
             text: None,
             image_file: Some(image_file.to_string()),
-            preview: format!("{width} × {height} px"),
+            preview: match label {
+                Some(name) => format!("{name} — {width} × {height} px"),
+                None => format!("{width} × {height} px"),
+            },
             chars: 0,
             detected: Detected::Plain,
             pinned: false,
@@ -303,6 +328,8 @@ impl Store {
                         .as_deref()
                         .map(|t| t.to_lowercase().contains(&q))
                         .unwrap_or(false)
+                    // images have no text — match the preview (file name, dimensions)
+                    || i.preview.to_lowercase().contains(&q)
             })
             .collect()
     }
@@ -482,8 +509,11 @@ mod tests {
         assert_eq!(detect("input@lan-solo.com"), Detected::Email);
         assert_eq!(detect("#38bdf8"), Detected::Color);
         assert_eq!(detect("#fff"), Detected::Color);
-        assert_eq!(detect("rgb(56, 189, 248)"), Detected::Plain); // has spaces → not single token
+        assert_eq!(detect("rgb(56, 189, 248)"), Detected::Color);
         assert_eq!(detect("rgb(56,189,248)"), Detected::Color);
+        assert_eq!(detect("rgba(56, 189, 248, 0.5)"), Detected::Color);
+        assert_eq!(detect("hsl(199, 89%, 60%)"), Detected::Color);
+        assert_eq!(detect("rgb( but no close paren"), Detected::Plain);
         assert_eq!(detect("fn main() {\n    println!(\"hi\");\n}"), Detected::Code);
         assert_eq!(detect("hello world"), Detected::Plain);
         assert_eq!(detect("#nothex"), Detected::Plain);
@@ -494,13 +524,33 @@ mod tests {
         let mut s = Store::default();
         s.add_text("https://lan-solo.de");
         s.add_text("plain note about rust");
-        s.add_image("img1.bin", 42, 800, 600);
+        s.add_image("img1.bin", 42, 800, 600, Some("Screenshot.png"));
         assert_eq!(s.search("", Filter::All).len(), 3);
         assert_eq!(s.search("", Filter::Links).len(), 1);
         assert_eq!(s.search("", Filter::Images).len(), 1);
         assert_eq!(s.search("rust", Filter::All).len(), 1);
         assert_eq!(s.search("RUST", Filter::Text).len(), 1);
         assert_eq!(s.search("nada", Filter::All).len(), 0);
+        // images are searchable by their preview (file name)
+        assert_eq!(s.search("screenshot", Filter::Images).len(), 1);
+    }
+
+    #[test]
+    fn image_label_in_preview() {
+        let mut s = Store::default();
+        s.add_image("a.bin", 1, 800, 600, Some("Foto.jpg"));
+        s.add_image("b.bin", 2, 800, 600, None);
+        assert_eq!(s.items[1].preview, "Foto.jpg — 800 × 600 px");
+        assert_eq!(s.items[0].preview, "800 × 600 px");
+    }
+
+    #[test]
+    fn file_paths_as_typed_text() {
+        let mut s = Store::default();
+        s.add_text_as("/tmp/report.pdf", Detected::File);
+        assert_eq!(s.items[0].detected, Detected::File);
+        // still a text item → shows up under the Text filter and in search
+        assert_eq!(s.search("report", Filter::Text).len(), 1);
     }
 
     #[test]

@@ -12,6 +12,7 @@ const de = {
   stack: 'Paste-Stack',
   snippets: 'Snippets',
   settings: 'Einstellungen',
+  help: 'Hilfe',
   paused: 'Pausiert',
   capturing: 'Aufnahme läuft',
   resume: 'Aufnahme fortsetzen',
@@ -20,6 +21,14 @@ const de = {
   search: 'Suchen …',
   empty: 'Noch nichts hier. Kopiere irgendwo etwas — clipon merkt es sich.',
   emptyFiltered: 'Keine Treffer',
+  emptyPinned:
+    'Noch nichts angepinnt.\nFahre mit der Maus über einen Eintrag und klicke das Pin-Symbol — Angepinntes überlebt das Aufräumen und das Leeren des Verlaufs.',
+  emptyText: 'Noch kein Text im Verlauf.\nKopiere irgendwo Text — er landet automatisch hier.',
+  emptyLinks: 'Noch keine Links.\nKopierte URLs (https://…, www.…) landen automatisch hier.',
+  emptyColors:
+    'Noch keine Farben.\nKopiere einen Farbwert wie #38bdf8, rgb(56, 189, 248) oder hsl(199, 89%, 60%) — oder wähle oben eine Farbe. Der System-Farbwähler hat eine Pipette zum Picken vom Bildschirm.',
+  emptyImages:
+    'Noch keine Bilder.\nScreenshots, kopierte Grafiken und im Finder kopierte Bilddateien (PNG, JPEG, GIF, WebP, …) landen automatisch hier.',
   clear: 'Verlauf leeren',
   clearConfirm: 'Verlauf wirklich leeren?',
   copied: 'Kopiert',
@@ -43,6 +52,11 @@ const de = {
   typeColor: 'Farbe',
   typeCode: 'Code',
   typeImage: 'Bild',
+  typeFile: 'Datei',
+  // colors
+  pickColor: 'Farbe wählen',
+  pickColorHint: 'Der System-Farbwähler hat eine Pipette — damit pickst du jede Farbe vom Bildschirm.',
+  addColor: 'Merken & kopieren',
   // stack
   stackHint:
     'Sammle Einträge im Stack und hole sie der Reihe nach zurück — per Klick oder mit dem Kürzel',
@@ -113,6 +127,7 @@ const en: typeof de = {
   stack: 'Paste stack',
   snippets: 'Snippets',
   settings: 'Settings',
+  help: 'Help',
   paused: 'Paused',
   capturing: 'Capturing',
   resume: 'Resume capture',
@@ -120,6 +135,14 @@ const en: typeof de = {
   search: 'Search …',
   empty: 'Nothing here yet. Copy something anywhere — clipon will remember it.',
   emptyFiltered: 'No matches',
+  emptyPinned:
+    'Nothing pinned yet.\nHover over an item and click the pin icon — pinned items survive cleanup and clearing the history.',
+  emptyText: 'No text in the history yet.\nCopy text anywhere — it lands here automatically.',
+  emptyLinks: 'No links yet.\nCopied URLs (https://…, www.…) land here automatically.',
+  emptyColors:
+    'No colors yet.\nCopy a color value like #38bdf8, rgb(56, 189, 248) or hsl(199, 89%, 60%) — or pick one above. The system color picker includes an eyedropper for picking from the screen.',
+  emptyImages:
+    'No images yet.\nScreenshots, copied graphics and image files copied in Finder (PNG, JPEG, GIF, WebP, …) land here automatically.',
   clear: 'Clear history',
   clearConfirm: 'Really clear the history?',
   copied: 'Copied',
@@ -142,6 +165,10 @@ const en: typeof de = {
   typeColor: 'Color',
   typeCode: 'Code',
   typeImage: 'Image',
+  typeFile: 'File',
+  pickColor: 'Pick color',
+  pickColorHint: 'The system color picker includes an eyedropper — pick any color on your screen.',
+  addColor: 'Save & copy',
   stackHint:
     'Collect items in the stack and bring them back in order — by click or with the shortcut',
   stackEmpty: 'Stack is empty. Use "Add to stack" in the history.',

@@ -5,15 +5,20 @@ import { dicts, Dict, Lang } from './i18n';
 import {
   IconCopy,
   IconEdit,
+  IconEyedropper,
   IconGear,
+  IconHelp,
+  IconLogo,
   IconPause,
   IconPin,
+  IconPinFilled,
   IconPlay,
   IconPlus,
   IconStack,
   IconTrash,
   IconX,
 } from './icons';
+import { fmtHex, fmtHsl, fmtRgb, parseColor } from './color';
 import { SettingsModal } from './components/SettingsModal';
 import { Help } from './components/Help';
 import { ActionId, comboFromEvent, formatCombo, hasRealModifier, resolveKeymap } from './shortcuts';
@@ -68,6 +73,8 @@ function typeLabel(item: ClipItem, t: Dict): string {
       return t.typeColor;
     case 'code':
       return t.typeCode;
+    case 'file':
+      return t.typeFile;
     default:
       return t.typePlain;
   }
@@ -84,6 +91,8 @@ function badge(item: ClipItem): { cls: string; label: string } {
       return { cls: 'color', label: 'col' };
     case 'code':
       return { cls: 'code', label: '{ }' };
+    case 'file':
+      return { cls: 'file', label: 'file' };
     default:
       return { cls: '', label: 'txt' };
   }
@@ -108,6 +117,7 @@ export default function App() {
   const [selStackId, setSelStackId] = useState<string | null>(null);
   const [selSnipId, setSelSnipId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [pickVal, setPickVal] = useState('#38bdf8');
   const toastTimer = useRef<number | undefined>(undefined);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
@@ -333,25 +343,29 @@ export default function App() {
     <div className="app">
       <div className="sidebar">
         <div className="brand">
+          <IconLogo size={21} />
           <span className="name">clipon</span>
           <span className="dot">.</span>
         </div>
-        {navFilters.map((f) => (
-          <button
-            key={f.key}
-            className={`navbtn ${view === 'history' && filter === f.key ? 'active' : ''}`}
-            title={keymap ? formatCombo(keymap[f.action]) : undefined}
-            onClick={() => {
-              setView('history');
-              setFilter(f.key);
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
+        <div className="navgroup" data-tour="filters">
+          {navFilters.map((f) => (
+            <button
+              key={f.key}
+              className={`navbtn ${view === 'history' && filter === f.key ? 'active' : ''}`}
+              title={keymap ? formatCombo(keymap[f.action]) : undefined}
+              onClick={() => {
+                setView('history');
+                setFilter(f.key);
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
         <div className="section">// tools</div>
         <button
           className={`navbtn ${view === 'stack' ? 'active' : ''}`}
+          data-tour="stack"
           title={keymap ? formatCombo(keymap.viewStack) : undefined}
           onClick={() => setView('stack')}
         >
@@ -360,6 +374,7 @@ export default function App() {
         </button>
         <button
           className={`navbtn ${view === 'snippets' ? 'active' : ''}`}
+          data-tour="snippets"
           title={keymap ? formatCombo(keymap.viewSnippets) : undefined}
           onClick={() => setView('snippets')}
         >
@@ -373,6 +388,7 @@ export default function App() {
         </div>
         <button
           className="navbtn"
+          data-tour="pause"
           title={keymap ? formatCombo(keymap.togglePause) : undefined}
           onClick={togglePaused}
         >
@@ -381,17 +397,26 @@ export default function App() {
         </button>
         <button
           className="navbtn"
+          data-tour="settings"
           title={keymap ? formatCombo(keymap.openSettings) : undefined}
           onClick={() => setShowSettings(true)}
         >
           <IconGear /> {t.settings}
+        </button>
+        <button
+          className="navbtn"
+          data-tour="helpbtn"
+          title={keymap ? formatCombo(keymap.openHelp) : undefined}
+          onClick={() => window.dispatchEvent(new CustomEvent('clipon-open-help'))}
+        >
+          <IconHelp /> {t.help}
         </button>
       </div>
 
       {view === 'history' && (
         <>
           <div className="main">
-            <div className="toolbar">
+            <div className="toolbar" data-tour="search">
               <input
                 ref={searchRef}
                 type="text"
@@ -409,10 +434,47 @@ export default function App() {
                 <IconTrash />
               </button>
             </div>
-            <div className="list">
+            {filter === 'colors' && (
+              <div className="colorbar">
+                <label className="pickwell" title={t.pickColorHint}>
+                  <input
+                    type="color"
+                    value={pickVal}
+                    onChange={(e) => setPickVal(e.target.value)}
+                  />
+                  <span className="well" style={{ background: pickVal }} />
+                  <IconEyedropper size={13} /> {t.pickColor}
+                </label>
+                <code className="pickval">{pickVal}</code>
+                <button
+                  className="primary"
+                  onClick={() =>
+                    api
+                      .addTextItem(pickVal)
+                      .then(() => showToast(`${t.copied}: ${pickVal}`))
+                      .catch(() => {})
+                  }
+                >
+                  {t.addColor}
+                </button>
+              </div>
+            )}
+            <div className="list" data-tour="list">
               {items.length === 0 && (
                 <div className="empty">
-                  {query || filter !== 'all' ? t.emptyFiltered : t.empty}
+                  {query
+                    ? t.emptyFiltered
+                    : filter === 'all'
+                    ? t.empty
+                    : filter === 'pinned'
+                    ? t.emptyPinned
+                    : filter === 'text'
+                    ? t.emptyText
+                    : filter === 'links'
+                    ? t.emptyLinks
+                    : filter === 'colors'
+                    ? t.emptyColors
+                    : t.emptyImages}
                 </div>
               )}
               {items.map((item) => {
@@ -448,8 +510,8 @@ export default function App() {
                       <button className="ghost icon" title={t.copy} onClick={(e) => { e.stopPropagation(); copyItem(item.id); }}>
                         <IconCopy />
                       </button>
-                      <button className="ghost icon" title={item.pinned ? t.unpin : t.pin} onClick={(e) => { e.stopPropagation(); api.pinItem(item.id, !item.pinned); }}>
-                        <IconPin />
+                      <button className={`ghost icon ${item.pinned ? 'pinned' : ''}`} title={item.pinned ? t.unpin : t.pin} onClick={(e) => { e.stopPropagation(); api.pinItem(item.id, !item.pinned); }}>
+                        {item.pinned ? <IconPinFilled /> : <IconPin />}
                       </button>
                       <button className="ghost icon" title={t.toStack} onClick={(e) => { e.stopPropagation(); api.stackAdd(item.id); }}>
                         <IconStack />
@@ -464,17 +526,28 @@ export default function App() {
             </div>
           </div>
 
-          <div className="detail">
+          <div className="detail" data-tour="detail">
             {!selected && <div className="placeholder">{t.select}</div>}
             {selected && (
               <>
                 <div className="body">
                   {selected.kind === 'image' ? (
                     <Thumb id={selected.id} maxDim={640} />
+                  ) : selected.detected === 'color' ? (
+                    <ColorCard
+                      value={detailText ?? selected.preview}
+                      t={t}
+                      onCopy={(v) =>
+                        api
+                          .addTextItem(v)
+                          .then(() => showToast(`${t.copied}: ${v}`))
+                          .catch(() => {})
+                      }
+                    />
                   ) : (
                     <div
                       className={`content ${
-                        selected.detected === 'code' ? 'mono' : ''
+                        selected.detected === 'code' || selected.detected === 'file' ? 'mono' : ''
                       }`}
                     >
                       {detailText ?? '…'}
@@ -666,6 +739,42 @@ export default function App() {
 
       <Help lang={lang} onOpenChange={setHelpOpen} />
       {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+/** Farb-Detail: großes Farbfeld + Umrechnung in Hex/RGB/HSL, jeweils kopierbar. */
+function ColorCard({
+  value,
+  t,
+  onCopy,
+}: {
+  value: string;
+  t: Dict;
+  onCopy: (text: string) => void;
+}) {
+  const parsed = parseColor(value);
+  if (!parsed) {
+    return <div className="content mono">{value}</div>;
+  }
+  const rows: [string, string][] = [
+    ['hex', fmtHex(parsed)],
+    ['rgb', fmtRgb(parsed)],
+    ['hsl', fmtHsl(parsed)],
+  ];
+  return (
+    <div className="colorcard">
+      <div className="bigswatch" style={{ background: value }} />
+      <div className="content mono original">{value}</div>
+      {rows.map(([label, v]) => (
+        <div key={label} className="crow">
+          <span className="k">{label}</span>
+          <code>{v}</code>
+          <button className="ghost icon" title={t.copy} onClick={() => onCopy(v)}>
+            <IconCopy />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
