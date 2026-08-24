@@ -64,6 +64,7 @@ impl ExportItem {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ImportStats {
     pub items_added: usize,
     pub items_skipped: usize,

@@ -74,22 +74,38 @@ fn show_main_window(app: &AppHandle) {
     }
 }
 
+/// Registers all global shortcuts. One failing combo does not block the
+/// others; all failures are reported together.
 pub fn register_shortcuts(app: &AppHandle, s: &Settings) -> Result<(), String> {
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
-    gs.on_shortcut(s.shortcut_toggle.as_str(), |app, _shortcut, event| {
+    let mut errors = Vec::new();
+    if let Err(e) = gs.on_shortcut(s.shortcut_toggle.as_str(), |app, _shortcut, event| {
         if event.state() == ShortcutState::Pressed {
             toggle_main_window(app);
         }
-    })
-    .map_err(|e| format!("Shortcut „{}“: {e}", s.shortcut_toggle))?;
-    gs.on_shortcut(s.shortcut_stack_pop.as_str(), |app, _shortcut, event| {
+    }) {
+        errors.push(format!("Shortcut „{}“: {e}", s.shortcut_toggle));
+    }
+    if let Err(e) = gs.on_shortcut(s.shortcut_stack_pop.as_str(), |app, _shortcut, event| {
         if event.state() == ShortcutState::Pressed {
             commands::do_stack_pop(app);
         }
-    })
-    .map_err(|e| format!("Shortcut „{}“: {e}", s.shortcut_stack_pop))?;
-    Ok(())
+    }) {
+        errors.push(format!("Shortcut „{}“: {e}", s.shortcut_stack_pop));
+    }
+    if let Err(e) = gs.on_shortcut(s.shortcut_picker.as_str(), |app, _shortcut, event| {
+        if event.state() == ShortcutState::Pressed {
+            commands::open_picker(app);
+        }
+    }) {
+        errors.push(format!("Shortcut „{}“: {e}", s.shortcut_picker));
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join(" · "))
+    }
 }
 
 fn build_tray(app: &tauri::App, s: &Settings) -> tauri::Result<CheckMenuItem<tauri::Wry>> {
@@ -188,11 +204,16 @@ fn main() {
             watcher::spawn(handle);
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let _ = window.hide();
             }
+            // the picker is transient: clicking elsewhere dismisses it
+            tauri::WindowEvent::Focused(false) if window.label() == "picker" => {
+                let _ = window.hide();
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
@@ -216,6 +237,16 @@ fn main() {
             commands::stack_remove,
             commands::stack_clear,
             commands::stack_pop_copy,
+            commands::transform_item,
+            commands::merge_stack,
+            commands::export_item,
+            commands::export_data,
+            commands::import_data,
+            commands::show_picker,
+            commands::hide_picker,
+            commands::picker_paste,
+            commands::accessibility_status,
+            commands::request_accessibility,
             commands::check_update,
             commands::install_update,
         ])

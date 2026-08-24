@@ -24,6 +24,9 @@ pub struct Settings {
     pub shortcut_toggle: String,
     /// Global shortcut: copy the next paste-stack item.
     pub shortcut_stack_pop: String,
+    /// Global shortcut: open the quick picker at the cursor.
+    #[serde(default = "default_shortcut_picker")]
+    pub shortcut_picker: String,
     /// In-app shortcut overrides (action id → combo). The frontend owns the
     /// action list and defaults; this only stores what the user changed.
     pub keymap: std::collections::BTreeMap<String, String>,
@@ -33,6 +36,10 @@ pub struct Settings {
     /// settings files from older versions pick up the password-manager list.
     #[serde(default = "default_ignored_apps")]
     pub ignored_apps: Vec<String>,
+}
+
+fn default_shortcut_picker() -> String {
+    "CmdOrCtrl+Shift+Space".into()
 }
 
 fn default_ignored_apps() -> Vec<String> {
@@ -60,6 +67,7 @@ impl Default for Settings {
             autostart: false,
             shortcut_toggle: "CmdOrCtrl+Shift+V".into(),
             shortcut_stack_pop: "CmdOrCtrl+Shift+B".into(),
+            shortcut_picker: default_shortcut_picker(),
             keymap: Default::default(),
             paused: false,
             ignored_apps: default_ignored_apps(),

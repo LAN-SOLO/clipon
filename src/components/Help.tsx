@@ -109,10 +109,18 @@ const de: Content = {
       ],
     },
     {
+      title: 'Quick-Picker',
+      body: [
+        'Cmd+Shift+Leertaste öffnet in jeder App ein kleines Suchfenster am Mauszeiger: tippen, mit ↑↓ wählen, ↩ — und der Eintrag landet direkt im Text, in dem du gerade schreibst.',
+        'Das direkte Einfügen braucht einmalig die macOS-Berechtigung „Bedienungshilfen“ (Einstellungen → Direktes Einfügen). Ohne sie kopiert der Picker nur, und du drückst Cmd+V.',
+      ],
+    },
+    {
       title: 'Kürzel & Tray',
       body: [
         '• Cmd+Shift+V — clipon-Fenster ein-/ausblenden, von überall',
         '• Cmd+Shift+B — Paste-Stack: nächsten Eintrag kopieren',
+        '• Cmd+Shift+Leertaste — Quick-Picker am Mauszeiger',
         'Das Schließen des Fensters beendet clipon nicht — es läuft im Tray weiter und zeichnet auf. Beenden geht über das Tray-Menü.',
         'Alle Kürzel lassen sich im Kürzel-Editor der Einstellungen frei belegen.',
       ],
@@ -120,8 +128,8 @@ const de: Content = {
     {
       title: 'Privatsphäre & Pause',
       body: [
-        'Die Zwischenablage ist ein sensibler Ort. Wenn clipon gerade nichts mitschneiden soll: Pause — per Seitenleiste oder Tray.',
-        'Große Texte lassen sich per Limit ausschließen (in KB, Standard 512 — geprüft, bevor gespeichert wird), Bilder komplett abschalten. Und nichts verlässt je deinen Rechner.',
+        'Die Zwischenablage ist ein sensibler Ort. Passwort-Manager, die ihre Kopien als vertraulich markieren, überspringt clipon automatisch; dazu kommt eine Ignorier-Liste pro App in den Einstellungen.',
+        'Wenn clipon gerade gar nichts mitschneiden soll: Pause — per Seitenleiste oder Tray. Große Texte lassen sich per Limit ausschließen, Bilder komplett abschalten. Und nichts verlässt je deinen Rechner.',
       ],
     },
   ],
@@ -144,7 +152,7 @@ const de: Content = {
     {
       sel: '[data-tour="detail"]',
       title: 'Details',
-      body: 'Rechts siehst du den kompletten Inhalt samt Statistiken. Bei Farben: großes Farbfeld plus Hex-, RGB- und HSL-Umrechnung — jedes Format einzeln kopierbar.',
+      body: 'Rechts siehst du den kompletten Inhalt samt Statistiken und Quell-App. Bei Text: Werkzeuge wie Trimmen, GROSS/klein, JSON formatieren — jedes Ergebnis wird kopiert und als neuer Eintrag gemerkt. Bei Farben: Hex-, RGB- und HSL-Umrechnung.',
     },
     {
       sel: '[data-tour="stack"]',
@@ -211,6 +219,7 @@ const de: Content = {
         '• „Nächsten kopieren“ im Stack-Bereich — oder von überall per Cmd+Shift+B',
         '• Jeder Abruf kopiert den vordersten Eintrag und entfernt ihn aus dem Stack',
         '• Einzelne Einträge entfernen oder den ganzen Stack leeren',
+        '• „Zusammenführen“ fügt alle Text-Einträge des Stacks (in Stack-Reihenfolge, durch Zeilenumbrüche getrennt) zu einem neuen Verlaufs-Eintrag zusammen und kopiert ihn — der Stack bleibt dabei erhalten, Bilder werden übersprungen',
         'Typischer Ablauf: fünf Angaben aus einem Dokument kopieren, alle in den Stack, dann im Formular Feld für Feld Cmd+Shift+B → Cmd+V.',
       ],
     },
@@ -223,6 +232,56 @@ const de: Content = {
         '• Klick auf ein Snippet kopiert seinen Text',
         '• Bearbeiten und Löschen über die Symbole am Eintrag',
         'Snippets liegen wie der Verlauf in der verschlüsselten Datenbank.',
+      ],
+    },
+    {
+      id: 'placeholders',
+      title: 'Snippet-Platzhalter',
+      body: [
+        'Snippets können Platzhalter enthalten, die beim Kopieren durch aktuelle Werte ersetzt werden:',
+        '• {date} — heutiges Datum als 2026-08-24',
+        '• {date:FORMAT} — Datum/Zeit in eigenem Format, z. B. {date:%d.%m.%Y} → 24.08.2026 oder {date:%A, %d. %B} — die Platzhalter entsprechen strftime (%Y Jahr, %m Monat, %d Tag, %H Stunde, %M Minute)',
+        '• {time} — aktuelle Uhrzeit als 09:05',
+        '• {clipboard} — der Inhalt, der gerade in der Zwischenablage liegt (bevor das Snippet kopiert wird)',
+        'Unbekannte Platzhalter und ungültige Formate bleiben unverändert stehen. Einen {cursor}-Platzhalter gibt es bewusst nicht — clipon kopiert Snippets, es setzt keine Einfügemarke.',
+        'Beispiel: „Hallo,\n\ndanke für deine Nachricht vom {date:%d.%m.}. — {clipboard}“',
+      ],
+    },
+    {
+      id: 'tools',
+      title: 'Werkzeuge & Umwandlungen',
+      body: [
+        'Bei jedem Text-Eintrag bietet die Detail-Ansicht unter „Werkzeuge“ Umwandlungen an. Jede erzeugt einen neuen Eintrag oben im Verlauf und legt ihn zugleich in die Zwischenablage — das Original bleibt unverändert.',
+        '• Trimmen — Leerraum am Anfang und Ende entfernen',
+        '• kleinbuchstaben / GROSSBUCHSTABEN / Titel-Schreibweise',
+        '• Zeilenumbrüche entfernen — alle Zeilen zu einer, durch Leerzeichen getrennt',
+        '• JSON formatieren — eingerückt und lesbar; ungültiges JSON meldet einen Fehler',
+        '• URL-kodieren / URL-dekodieren — Prozent-Kodierung nach RFC 3986, etwa für Parameter in Links',
+        'Farb-Einträge haben stattdessen ihre Umrechnung in Hex, RGB und HSL.',
+      ],
+    },
+    {
+      id: 'export',
+      title: 'Export & Import',
+      body: [
+        'Einzelner Eintrag: „Als Datei exportieren …“ in der Detail-Ansicht speichert Text als .txt und Bilder als .png — überall dort, wo du die Datei brauchst.',
+        'Komplettes Backup: Einstellungen → Daten. Wähle Verlauf und/oder Snippets und exportiere in eine Datei.',
+        '• Ohne Passphrase entsteht eine lesbare JSON-Datei (Bilder darin als Base64) — praktisch, um Daten weiterzuverarbeiten, aber unverschlüsselt',
+        '• Mit Passphrase wird die Datei AES-256-GCM-verschlüsselt (Schlüssel per PBKDF2 aus der Passphrase) — sie lässt sich auf jedem Rechner mit derselben Passphrase wieder einlesen, unabhängig vom Schlüsselbund',
+        'Import: dieselbe Stelle, „Importieren …“. Einträge, die schon im Verlauf sind, werden übersprungen (Duplikat-Erkennung über den Inhalt), Pins und Zeitstempel bleiben erhalten. Die Verlaufsgröße gilt auch nach dem Import — überzählige alte Einträge werden aufgeräumt.',
+      ],
+    },
+    {
+      id: 'picker',
+      title: 'Quick-Picker',
+      body: [
+        'Der Quick-Picker ist ein kleines Fenster am Mauszeiger, das du in jeder App per Cmd+Shift+Leertaste öffnest — ohne das Hauptfenster.',
+        '• Tippen filtert den Verlauf, ↑↓ bewegen die Auswahl',
+        '• ↩ oder Klick fügt den Eintrag direkt in die App ein, aus der du gekommen bist',
+        '• 1–9 wählen den Eintrag mit dieser Nummer (bei leerer Suche, sonst mit Cmd)',
+        '• Esc oder ein Klick außerhalb schließt den Picker',
+        'Direktes Einfügen: clipon bringt die vorherige App wieder nach vorn und drückt für dich Cmd+V. Dafür braucht es die macOS-Berechtigung „Bedienungshilfen“ — Einstellungen → Direktes Einfügen → „Berechtigung anfordern“. Solange sie fehlt, kopiert der Picker nur, und du fügst mit Cmd+V selbst ein.',
+        'Hinweis für Entwickler-Builds: Die Berechtigung hängt an der App-Datei; nach einem Neubau muss sie erneut erteilt werden.',
       ],
     },
     {
@@ -253,6 +312,7 @@ const de: Content = {
       body: [
         '• Cmd/Ctrl+Shift+V — Fenster ein-/ausblenden (global, funktioniert in jeder App)',
         '• Cmd/Ctrl+Shift+B — Paste-Stack: nächsten Eintrag kopieren (global)',
+        '• Cmd/Ctrl+Shift+Leertaste — Quick-Picker am Mauszeiger öffnen (global)',
         'In der App hat jede Aktion ein Kürzel: Cmd/Ctrl+1–8 wechseln Filter und Ansichten, Pfeiltasten bewegen die Auswahl, Enter kopiert sie, Cmd/Ctrl+P pinnt, Cmd/Ctrl+S legt in den Stack, Backspace löscht, Cmd/Ctrl+E bearbeitet Snippets, Cmd/Ctrl+F springt in die Suche, Cmd/Ctrl+, öffnet die Einstellungen, F1 diese Hilfe.',
         'Dazu die Werkzeug-Kürzel: Cmd/Ctrl+Shift+P pausiert die Aufnahme, Cmd/Ctrl+Shift+Backspace leert den Verlauf, Cmd/Ctrl+Shift+N kopiert den nächsten Stack-Eintrag (in der App — global bleibt Cmd/Ctrl+Shift+B), Cmd/Ctrl+Shift+X leert den Stack, Cmd/Ctrl+N legt ein neues Snippet an.',
         'Alle Kürzel — global wie in der App — belegst du im Kürzel-Editor der Einstellungen frei: auf ein Kürzel klicken, neue Tastenkombination drücken. Konflikte werden erkannt, ↺ setzt einzelne zurück, „Alle zurücksetzen" den ganzen Satz.',
@@ -264,6 +324,9 @@ const de: Content = {
       body: [
         'Der komplette Verlauf liegt AES-256-GCM-verschlüsselt in deinem Benutzerordner. Der Schlüssel wird beim ersten Start erzeugt und im Schlüsselbund des Systems abgelegt — nicht in einer Datei neben den Daten.',
         'clipon sendet nichts ins Netz; die einzige Verbindung ist der Update-Check gegen GitHub.',
+        'Passwort-Manager: Kopien, die eine App als vertraulich markiert (1Password, Bitwarden, KeePassXC, Apple-Passwörter und andere nutzen dafür den Standard „ConcealedType“), zeichnet clipon grundsätzlich nicht auf — unabhängig von allen Einstellungen.',
+        'Ignorierte Apps: In den Einstellungen unter „Privatsphäre“ führst du eine Liste von Apps, deren Kopien nie im Verlauf landen. Die gängigen Passwort-Manager sind vorbelegt; über „Laufende App hinzufügen …“ ergänzt du jede gerade geöffnete App, oder du trägst eine Bundle-ID von Hand ein.',
+        'Quell-App: Zu jedem Eintrag merkt sich clipon, aus welcher App er kopiert wurde — zu sehen in der Detail-Ansicht. Bei sehr schnellen App-Wechseln kann die Zuordnung um einen Moment danebenliegen.',
         'Aufnahme pausieren: über die Seitenleiste oder das Tray-Menü — solange Pause aktiv ist, wird nichts mitgeschnitten.',
         'Zusätzliche Regeln in den Einstellungen: Texte über einer wählbaren Größe ignorieren, Bilder abschalten.',
       ],
@@ -278,7 +341,10 @@ const de: Content = {
         '• Bilder mitschneiden — Bild-Inhalte an/aus',
         '• Beim Leeren Pins behalten — Schutz für Angepinntes',
         '• Beim Anmelden starten — clipon automatisch mit dem System starten',
+        '• Privatsphäre — Liste der ignorierten Apps',
         '• Kürzel — Editor für alle Kürzel (global & in der App): klicken, Tasten drücken, fertig',
+        '• Direktes Einfügen — Status der Bedienungshilfen-Berechtigung für den Quick-Picker',
+        '• Daten — Backup exportieren (optional verschlüsselt) und importieren',
       ],
     },
     {
@@ -366,10 +432,18 @@ const en: Content = {
       ],
     },
     {
+      title: 'Quick picker',
+      body: [
+        'Cmd+Shift+Space opens a small search window at the mouse pointer in any app: type, pick with ↑↓, hit ↩ — and the item lands right in the text you are writing.',
+        'Direct paste needs the macOS “Accessibility” permission once (Settings → Direct paste). Without it, the picker only copies and you press Cmd+V.',
+      ],
+    },
+    {
       title: 'Shortcuts & tray',
       body: [
         '• Cmd+Shift+V — show/hide the clipon window, from anywhere',
         '• Cmd+Shift+B — paste stack: copy the next item',
+        '• Cmd+Shift+Space — quick picker at the mouse pointer',
         'Closing the window does not quit clipon — it keeps running in the tray and keeps capturing. Quit via the tray menu.',
         'Every shortcut can be changed in the shortcut editor in Settings.',
       ],
@@ -377,8 +451,8 @@ const en: Content = {
     {
       title: 'Privacy & pause',
       body: [
-        'The clipboard is a sensitive place. When clipon shouldn’t capture: pause it — via the sidebar or the tray.',
-        'Large texts can be excluded by a size limit (in KB, default 512 — checked before saving), images can be turned off entirely. And nothing ever leaves your machine.',
+        'The clipboard is a sensitive place. Password managers that mark their copies as confidential are skipped automatically; on top of that, Settings has a per-app ignore list.',
+        'When clipon shouldn’t capture anything at all: pause it — via the sidebar or the tray. Large texts can be excluded by a size limit, images turned off entirely. And nothing ever leaves your machine.',
       ],
     },
   ],
@@ -401,7 +475,7 @@ const en: Content = {
     {
       sel: '[data-tour="detail"]',
       title: 'Details',
-      body: 'The right pane shows the full content plus statistics. For colors: a large swatch plus hex, RGB and HSL conversion — each format copyable on its own.',
+      body: 'The right pane shows the full content plus statistics and the source app. For text: tools like trim, UPPER/lower, pretty-print JSON — every result is copied and saved as a new entry. For colors: hex, RGB and HSL conversion.',
     },
     {
       sel: '[data-tour="stack"]',
@@ -468,6 +542,7 @@ const en: Content = {
         '• “Copy next” in the stack view — or from anywhere via Cmd+Shift+B',
         '• Each retrieval copies the front item and removes it from the stack',
         '• Remove single items or clear the whole stack',
+        '• “Merge” joins all text items of the stack (in stack order, separated by line breaks) into one new history entry and copies it — the stack stays intact, images are skipped',
         'Typical flow: copy five values from a document, add all to the stack, then in the form: Cmd+Shift+B → Cmd+V, field by field.',
       ],
     },
@@ -480,6 +555,56 @@ const en: Content = {
         '• Click a snippet to copy its text',
         '• Edit and delete via the icons on each entry',
         'Snippets live in the same encrypted database as the history.',
+      ],
+    },
+    {
+      id: 'placeholders',
+      title: 'Snippet placeholders',
+      body: [
+        'Snippets can contain placeholders that are replaced with current values when copied:',
+        '• {date} — today’s date as 2026-08-24',
+        '• {date:FORMAT} — date/time in a custom format, e.g. {date:%m/%d/%Y} → 08/24/2026 or {date:%A, %B %d} — placeholders follow strftime (%Y year, %m month, %d day, %H hour, %M minute)',
+        '• {time} — current time as 09:05',
+        '• {clipboard} — whatever is on the clipboard right now (before the snippet replaces it)',
+        'Unknown placeholders and invalid formats are left as written. There is deliberately no {cursor} placeholder — clipon copies snippets, it does not place a caret.',
+        'Example: “Hi,\n\nthanks for your message from {date:%b %d}. — {clipboard}”',
+      ],
+    },
+    {
+      id: 'tools',
+      title: 'Tools & transformations',
+      body: [
+        'For every text item the detail pane offers transformations under “Tools”. Each one creates a new entry at the top of the history and puts it on the clipboard — the original stays untouched.',
+        '• Trim — remove leading and trailing whitespace',
+        '• lowercase / UPPERCASE / Title Case',
+        '• Remove line breaks — all lines joined into one, separated by spaces',
+        '• Pretty-print JSON — indented and readable; invalid JSON reports an error',
+        '• URL encode / URL decode — percent-encoding per RFC 3986, e.g. for parameters in links',
+        'Color items offer their hex, RGB and HSL conversion instead.',
+      ],
+    },
+    {
+      id: 'export',
+      title: 'Export & import',
+      body: [
+        'Single item: “Export as file …” in the detail pane saves text as .txt and images as .png — wherever you need the file.',
+        'Full backup: Settings → Data. Choose history and/or snippets and export to a file.',
+        '• Without a passphrase you get a readable JSON file (images inside as Base64) — handy for processing the data elsewhere, but unencrypted',
+        '• With a passphrase the file is AES-256-GCM-encrypted (key derived via PBKDF2 from the passphrase) — it can be restored on any machine with the same passphrase, independent of the keychain',
+        'Import: same place, “Import …”. Items already in the history are skipped (duplicate detection by content); pins and timestamps are preserved. The history size still applies after an import — surplus old items are cleaned up.',
+      ],
+    },
+    {
+      id: 'picker',
+      title: 'Quick picker',
+      body: [
+        'The quick picker is a small window at the mouse pointer that you open in any app with Cmd+Shift+Space — no main window needed.',
+        '• Typing filters the history, ↑↓ move the selection',
+        '• ↩ or a click pastes the item straight into the app you came from',
+        '• 1–9 pick the item with that number (with an empty search, otherwise with Cmd)',
+        '• Esc or a click outside closes the picker',
+        'Direct paste: clipon brings the previous app back to the front and presses Cmd+V for you. That requires the macOS “Accessibility” permission — Settings → Direct paste → “Request permission”. While it is missing, the picker only copies and you paste with Cmd+V yourself.',
+        'Note for development builds: the permission is tied to the app binary; after a rebuild it has to be granted again.',
       ],
     },
     {
@@ -510,6 +635,7 @@ const en: Content = {
       body: [
         '• Cmd/Ctrl+Shift+V — show/hide the window (global, works in any app)',
         '• Cmd/Ctrl+Shift+B — paste stack: copy next item (global)',
+        '• Cmd/Ctrl+Shift+Space — open the quick picker at the mouse pointer (global)',
         'Inside the app every action has a shortcut: Cmd/Ctrl+1–8 switch filters and views, arrow keys move the selection, Enter copies it, Cmd/Ctrl+P pins, Cmd/Ctrl+S adds to the stack, Backspace deletes, Cmd/Ctrl+E edits snippets, Cmd/Ctrl+F jumps to search, Cmd/Ctrl+, opens Settings, F1 this help.',
         'Plus the tool shortcuts: Cmd/Ctrl+Shift+P pauses capturing, Cmd/Ctrl+Shift+Backspace clears the history, Cmd/Ctrl+Shift+N copies the next stack item (in-app — globally it stays Cmd/Ctrl+Shift+B), Cmd/Ctrl+Shift+X clears the stack, Cmd/Ctrl+N creates a new snippet.',
         'Every shortcut — global and in-app — is freely configurable in the shortcut editor in Settings: click a shortcut, press the new key combination. Conflicts are detected, ↺ resets one binding, “Reset all” the whole set.',
@@ -521,6 +647,9 @@ const en: Content = {
       body: [
         'The entire history is stored AES-256-GCM-encrypted in your user folder. The key is generated on first launch and kept in the system keychain — not in a file next to the data.',
         'clipon sends nothing to the network; the only connection is the update check against GitHub.',
+        'Password managers: copies an app marks as confidential (1Password, Bitwarden, KeePassXC, Apple Passwords and others use the “ConcealedType” convention) are never recorded by clipon — regardless of any setting.',
+        'Ignored apps: under Settings → “Privacy” you keep a list of apps whose copies never enter the history. Common password managers are preset; “Add running app …” adds any app that is currently open, or type a bundle id by hand.',
+        'Source app: clipon remembers which app each item was copied from — shown in the detail pane. With very fast app switches the attribution can be off by a moment.',
         'Pause capturing via the sidebar or the tray menu — while paused, nothing is recorded.',
         'Additional rules in Settings: ignore texts above a chosen size, disable images.',
       ],
@@ -535,7 +664,10 @@ const en: Content = {
         '• Capture images — image contents on/off',
         '• Keep pins when clearing — protection for pinned items',
         '• Start at login — launch clipon with the system',
+        '• Privacy — the list of ignored apps',
         '• Shortcuts — the editor for every binding (global & in-app): click, press keys, done',
+        '• Direct paste — status of the Accessibility permission for the quick picker',
+        '• Data — export a backup (optionally encrypted) and import one',
       ],
     },
     {

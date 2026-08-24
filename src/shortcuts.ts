@@ -68,10 +68,11 @@ export const ACTIONS: ActionDef[] = [
   { id: 'newSnippet', label: (t) => t.newSnippet, def: 'CmdOrCtrl+N', group: 'tools' },
 ];
 
-/** Defaults of the two system-wide shortcuts (registered with the OS). */
+/** Defaults of the system-wide shortcuts (registered with the OS). */
 export const GLOBAL_DEFAULTS = {
   shortcutToggle: 'CmdOrCtrl+Shift+V',
   shortcutStackPop: 'CmdOrCtrl+Shift+B',
+  shortcutPicker: 'CmdOrCtrl+Shift+Space',
 } as const;
 
 export const isMac = /mac/i.test(

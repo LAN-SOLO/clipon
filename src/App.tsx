@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { api, ClipItem, Filter, Settings, Snippet, UpdateInfo } from './api';
+import { save } from '@tauri-apps/plugin-dialog';
+import { api, ClipItem, Filter, Settings, Snippet, Transform, UpdateInfo } from './api';
 import { dicts, Dict, Lang } from './i18n';
 import {
   IconCopy,
@@ -157,12 +158,13 @@ export default function App() {
     const subs = [
       listen('history-changed', refreshItems),
       listen('stack-changed', refreshStack),
+      listen('snippets-changed', refreshSnippets),
       listen<boolean>('paused-changed', (e) => setPaused(e.payload)),
     ];
     return () => {
       subs.forEach((p) => p.then((un) => un()));
     };
-  }, [refreshItems, refreshStack]);
+  }, [refreshItems, refreshStack, refreshSnippets]);
 
   const selected = items.find((i) => i.id === selectedId) ?? null;
 
@@ -183,6 +185,32 @@ export default function App() {
   const togglePaused = () => {
     api.setPaused(!paused).then(() => setPaused(!paused));
   };
+
+  const exportItem = (item: ClipItem) => {
+    const ext = item.kind === 'image' ? 'png' : 'txt';
+    const base =
+      item.preview
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 40) || 'clipon';
+    save({ defaultPath: `${base}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] })
+      .then((path) => {
+        if (!path) return;
+        return api.exportItem(item.id, path).then(() => showToast(t.exported));
+      })
+      .catch((e) => showToast(String(e)));
+  };
+
+  const transforms: { op: Transform; label: string }[] = [
+    { op: 'trim', label: t.tfTrim },
+    { op: 'lower', label: t.tfLower },
+    { op: 'upper', label: t.tfUpper },
+    { op: 'title', label: t.tfTitle },
+    { op: 'stripbreaks', label: t.tfStripBreaks },
+    { op: 'jsonpretty', label: t.tfJsonPretty },
+    { op: 'urlencode', label: t.tfUrlEncode },
+    { op: 'urldecode', label: t.tfUrlDecode },
+  ];
 
   // ---- keyboard shortcuts (bindings editable in the settings) -------------
   const moveSelection = (dir: 1 | -1) => {
@@ -574,7 +602,39 @@ export default function App() {
                   <span>{fmtTime(selected.createdAt, lang)}</span>
                   <span className="k">{t.lastUsed}</span>
                   <span>{fmtTime(selected.lastCopiedAt, lang)}</span>
+                  {(selected.sourceAppName || selected.sourceAppId) && (
+                    <>
+                      <span className="k">{t.sourceApp}</span>
+                      <span title={selected.sourceAppId ?? undefined}>
+                        {selected.sourceAppName ?? selected.sourceAppId}
+                      </span>
+                    </>
+                  )}
                 </div>
+                {selected.kind === 'text' && (
+                  <div className="tools" data-tour="tools">
+                    <div className="fieldlabel" title={t.tfHint}>
+                      {t.toolsSection}
+                    </div>
+                    <div className="tfrow">
+                      {transforms.map((tf) => (
+                        <button
+                          key={tf.op}
+                          className="ghost"
+                          title={t.tfHint}
+                          onClick={() =>
+                            api
+                              .transformItem(selected.id, tf.op)
+                              .then(() => showToast(t.copied))
+                              .catch((e) => showToast(`${t.tfError} ${String(e)}`))
+                          }
+                        >
+                          {tf.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="btns">
                   <button className="primary" onClick={() => copyItem(selected.id)}>
                     {t.copy}
@@ -583,6 +643,7 @@ export default function App() {
                     {selected.pinned ? t.unpin : t.pin}
                   </button>
                   <button onClick={() => api.stackAdd(selected.id)}>{t.toStack}</button>
+                  <button onClick={() => exportItem(selected)}>{t.exportItem}</button>
                   <button
                     className="danger"
                     onClick={() => {
@@ -615,6 +676,18 @@ export default function App() {
               }
             >
               {t.popNext}
+            </button>
+            <button
+              disabled={!stack.some((i) => i.kind === 'text')}
+              title={t.mergeStackTitle}
+              onClick={() =>
+                api
+                  .mergeStack()
+                  .then(() => showToast(t.merged))
+                  .catch(() => showToast(t.mergeNoText))
+              }
+            >
+              {t.mergeStack}
             </button>
             <button disabled={stack.length === 0} onClick={() => api.stackClear()}>
               {t.stackClear}
@@ -804,6 +877,7 @@ function SnippetEditor({
           <span>{t.snippetText}</span>
           <textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} />
         </label>
+        <div className="note">{t.snippetPlaceholderHint}</div>
         <div className="btnrow">
           <button onClick={onClose}>{t.cancel}</button>
           <button
