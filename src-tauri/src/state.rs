@@ -1,5 +1,5 @@
 use crate::settings::Settings;
-use clipon_core::Store;
+use clipon_core::{SourceApp, Store};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
@@ -16,9 +16,17 @@ pub struct AppState {
     pub paused: AtomicBool,
     /// Tray "pause" checkbox, so UI-side toggles stay in sync.
     pub pause_menu: Mutex<Option<CheckMenuItem<tauri::Wry>>>,
+    /// Frontmost app (+ pid), maintained by the macOS activation observer.
+    pub frontmost: Mutex<Option<(SourceApp, i32)>>,
+    /// App that was frontmost when the quick picker opened — paste target.
+    pub picker_return: Mutex<Option<(SourceApp, i32)>>,
 }
 
 impl AppState {
+    pub fn frontmost_source(&self) -> Option<SourceApp> {
+        self.frontmost.lock().unwrap().as_ref().map(|(s, _)| s.clone())
+    }
+
     pub fn store_path(&self) -> PathBuf {
         self.data_dir.join("history.clipon")
     }

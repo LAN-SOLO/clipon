@@ -19,6 +19,8 @@ pub struct ItemDto {
     pub times_copied: u32,
     pub created_at: String,
     pub last_copied_at: String,
+    pub source_app_id: Option<String>,
+    pub source_app_name: Option<String>,
 }
 
 fn to_dto(i: &clipon_core::ClipItem) -> ItemDto {
@@ -32,7 +34,30 @@ fn to_dto(i: &clipon_core::ClipItem) -> ItemDto {
         times_copied: i.times_copied,
         created_at: i.created_at.to_rfc3339(),
         last_copied_at: i.last_copied_at.to_rfc3339(),
+        source_app_id: i.source_app.as_ref().and_then(|s| s.bundle_id.clone()),
+        source_app_name: i.source_app.as_ref().and_then(|s| s.name.clone()),
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningAppDto {
+    pub bundle_id: String,
+    pub name: String,
+}
+
+/// Async so the wait for the main thread cannot deadlock the caller.
+#[tauri::command]
+pub async fn list_running_apps(app: AppHandle) -> Vec<RunningAppDto> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = app.run_on_main_thread(move || {
+        let _ = tx.send(crate::macos::running_apps());
+    });
+    rx.recv_timeout(std::time::Duration::from_secs(2))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(bundle_id, name)| RunningAppDto { bundle_id, name })
+        .collect()
 }
 
 #[derive(Serialize)]

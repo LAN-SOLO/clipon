@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod macos;
 mod settings;
 mod state;
 mod watcher;
@@ -172,8 +173,11 @@ fn main() {
                 last_seen: Mutex::new(None),
                 paused: AtomicBool::new(s.paused),
                 pause_menu: Mutex::new(None),
+                frontmost: Mutex::new(macos::frontmost_app_now()),
+                picker_return: Mutex::new(None),
             };
             app.manage(state);
+            macos::install_frontmost_observer(handle.clone());
 
             let pause_item = build_tray(app, &s)?;
             *app.state::<AppState>().pause_menu.lock().unwrap() = Some(pause_item);
@@ -194,6 +198,7 @@ fn main() {
             commands::get_settings,
             commands::set_settings,
             commands::set_paused,
+            commands::list_running_apps,
             commands::list_items,
             commands::get_item_text,
             commands::get_item_image,

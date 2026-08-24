@@ -1,9 +1,10 @@
 //! Clipboard watcher: polls the system clipboard and feeds new content into
 //! the store. Runs on its own thread for the whole app lifetime.
 
+use crate::macos;
 use crate::state::AppState;
 use arboard::ImageData;
-use clipon_core::fnv1a;
+use clipon_core::{fnv1a, SourceApp};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -21,37 +22,58 @@ pub fn spawn(app: AppHandle) {
             Ok(c) => c,
             Err(_) => return,
         };
+        let mut last_change_count: i64 = -1;
         loop {
             std::thread::sleep(Duration::from_millis(POLL_MS));
             let state = app.state::<AppState>();
             if state.paused.load(Ordering::Relaxed) {
                 continue;
             }
+            if macos::IS_MACOS {
+                let cc = macos::pasteboard_change_count();
+                if cc == last_change_count {
+                    continue;
+                }
+                // consume the change before any policy check, so a skipped
+                // copy is never picked up on a later tick either
+                last_change_count = cc;
+                if macos::pasteboard_has_concealed_types() {
+                    continue;
+                }
+            }
+            let source = state.frontmost_source();
+            let ignored = state.settings.lock().unwrap().ignored_apps.clone();
+            if !clipon_core::should_capture_from(
+                source.as_ref().and_then(|s| s.bundle_id.as_deref()),
+                &ignored,
+            ) {
+                continue;
+            }
             // files first: a Finder/Explorer copy also carries the file name as
             // plain text, which would otherwise shadow the actual content
             if let Ok(files) = clipboard.get().file_list() {
                 if !files.is_empty() {
-                    handle_files(&app, &state, &files);
+                    handle_files(&app, &state, &files, source);
                     continue;
                 }
             }
             if let Ok(text) = clipboard.get_text() {
                 if !text.is_empty() {
-                    handle_text(&app, &state, &text);
+                    handle_text(&app, &state, &text, source);
                     continue;
                 }
             }
             let capture_images = state.settings.lock().unwrap().capture_images;
             if capture_images {
                 if let Ok(img) = clipboard.get_image() {
-                    handle_image(&app, &state, &img);
+                    handle_image(&app, &state, &img, source);
                 }
             }
         }
     });
 }
 
-fn handle_text(app: &AppHandle, state: &AppState, text: &str) {
+fn handle_text(app: &AppHandle, state: &AppState, text: &str, source: Option<SourceApp>) {
     let hash = fnv1a(text.as_bytes());
     {
         let mut last = state.last_seen.lock().unwrap();
@@ -69,7 +91,7 @@ fn handle_text(app: &AppHandle, state: &AppState, text: &str) {
     }
     let evicted = {
         let mut store = state.store.lock().unwrap();
-        store.add_text(text);
+        store.add_text_from(text, clipon_core::detect(text), source);
         store.enforce_limit(limit.max(1))
     };
     state.delete_blobs(&evicted);
@@ -79,7 +101,12 @@ fn handle_text(app: &AppHandle, state: &AppState, text: &str) {
 
 /// Copied files: image files become image items (decoded like a bitmap copy),
 /// everything else is kept as one path-list text item.
-fn handle_files(app: &AppHandle, state: &AppState, files: &[PathBuf]) {
+fn handle_files(
+    app: &AppHandle,
+    state: &AppState,
+    files: &[PathBuf],
+    source: Option<SourceApp>,
+) {
     let joined = files
         .iter()
         .map(|p| p.to_string_lossy())
@@ -104,7 +131,7 @@ fn handle_files(app: &AppHandle, state: &AppState, files: &[PathBuf]) {
             .extension()
             .map(|e| IMAGE_EXTS.contains(&e.to_string_lossy().to_lowercase().as_str()))
             .unwrap_or(false);
-        if is_image && capture_images && add_image_file(state, path, limit) {
+        if is_image && capture_images && add_image_file(state, path, limit, source.clone()) {
             changed = true;
         } else {
             others.push(path.to_string_lossy().into_owned());
@@ -113,7 +140,7 @@ fn handle_files(app: &AppHandle, state: &AppState, files: &[PathBuf]) {
     if !others.is_empty() {
         let evicted = {
             let mut store = state.store.lock().unwrap();
-            store.add_text_as(&others.join("\n"), clipon_core::Detected::File);
+            store.add_text_from(&others.join("\n"), clipon_core::Detected::File, source);
             store.enforce_limit(limit.max(1))
         };
         state.delete_blobs(&evicted);
@@ -126,7 +153,12 @@ fn handle_files(app: &AppHandle, state: &AppState, files: &[PathBuf]) {
 }
 
 /// Reads and decodes one image file into an encrypted blob + history item.
-fn add_image_file(state: &AppState, path: &Path, limit: usize) -> bool {
+fn add_image_file(
+    state: &AppState,
+    path: &Path,
+    limit: usize,
+    source: Option<SourceApp>,
+) -> bool {
     let Ok(meta) = std::fs::metadata(path) else {
         return false;
     };
@@ -169,7 +201,7 @@ fn add_image_file(state: &AppState, path: &Path, limit: usize) -> bool {
     let label = path.file_name().map(|n| n.to_string_lossy().into_owned());
     let evicted = {
         let mut store = state.store.lock().unwrap();
-        store.add_image(&file_name, hash, width, height, label.as_deref());
+        store.add_image(&file_name, hash, width, height, label.as_deref(), source);
         store.enforce_limit(limit.max(1))
     };
     state.delete_blobs(&evicted);
@@ -187,7 +219,7 @@ pub fn image_hash(img: &ImageData) -> u64 {
     fnv1a(&seed)
 }
 
-fn handle_image(app: &AppHandle, state: &AppState, img: &ImageData) {
+fn handle_image(app: &AppHandle, state: &AppState, img: &ImageData, source: Option<SourceApp>) {
     let hash = image_hash(img);
     {
         let mut last = state.last_seen.lock().unwrap();
@@ -217,7 +249,7 @@ fn handle_image(app: &AppHandle, state: &AppState, img: &ImageData) {
     let limit = state.settings.lock().unwrap().history_limit as usize;
     let evicted = {
         let mut store = state.store.lock().unwrap();
-        store.add_image(&file_name, hash, img.width as u32, img.height as u32, None);
+        store.add_image(&file_name, hash, img.width as u32, img.height as u32, None, source);
         store.enforce_limit(limit.max(1))
     };
     state.delete_blobs(&evicted);

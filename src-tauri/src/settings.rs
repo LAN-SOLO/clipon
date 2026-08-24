@@ -29,6 +29,24 @@ pub struct Settings {
     pub keymap: std::collections::BTreeMap<String, String>,
     /// Capture paused.
     pub paused: bool,
+    /// Bundle ids whose copies are never recorded. Field-level default so
+    /// settings files from older versions pick up the password-manager list.
+    #[serde(default = "default_ignored_apps")]
+    pub ignored_apps: Vec<String>,
+}
+
+fn default_ignored_apps() -> Vec<String> {
+    [
+        "com.1password.1password",
+        "com.agilebits.onepassword7",
+        "com.bitwarden.desktop",
+        "org.keepassxc.keepassxc",
+        "com.apple.keychainaccess",
+        "com.apple.Passwords",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 impl Default for Settings {
@@ -44,6 +62,7 @@ impl Default for Settings {
             shortcut_stack_pop: "CmdOrCtrl+Shift+B".into(),
             keymap: Default::default(),
             paused: false,
+            ignored_apps: default_ignored_apps(),
         }
     }
 }
