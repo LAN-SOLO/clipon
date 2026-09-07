@@ -249,13 +249,25 @@ export function SettingsModal({
           — {t.settings}
         </h2>
 
-        <label className="field">
-          <span>{t.language}</span>
-          <select value={s.language} onChange={(e) => set('language', e.target.value as 'de' | 'en')}>
-            <option value="de">Deutsch</option>
-            <option value="en">English</option>
-          </select>
-        </label>
+        <div className="row2">
+          <label className="field grow1">
+            <span>{t.language}</span>
+            <select value={s.language} onChange={(e) => set('language', e.target.value as 'de' | 'en')}>
+              <option value="de">Deutsch</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label className="field grow1">
+            <span>{t.themeLabel}</span>
+            <select
+              value={s.theme}
+              onChange={(e) => set('theme', e.target.value as Settings['theme'])}
+            >
+              <option value="dark">{t.themeDark}</option>
+              <option value="light">{t.themeLight}</option>
+            </select>
+          </label>
+        </div>
 
         <label className="field">
           <span>{t.historyLimit}</span>

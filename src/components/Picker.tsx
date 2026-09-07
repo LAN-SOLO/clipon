@@ -40,10 +40,19 @@ export function Picker() {
 
   useEffect(reset, [reset]);
 
+  // theme/language follow the main window's settings, also while hidden
+  useEffect(() => {
+    if (!settings) return;
+    document.documentElement.dataset.theme = settings.theme;
+  }, [settings]);
+
   useEffect(() => {
     const subs = [
       listen('picker-open', reset),
       listen('history-changed', () => refresh(query)),
+      listen('settings-changed', () => {
+        api.getSettings().then(setSettings).catch(() => {});
+      }),
     ];
     return () => {
       subs.forEach((p) => p.then((un) => un()));

@@ -48,6 +48,8 @@ export interface Settings {
   paused: boolean;
   /** Bundle ids whose copies are never recorded. */
   ignoredApps: string[];
+  /** Appearance; mirrored onto <html data-theme> by every window. */
+  theme: 'dark' | 'light';
 }
 
 export interface UpdateInfo {

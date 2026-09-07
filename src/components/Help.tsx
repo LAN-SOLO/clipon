@@ -172,7 +172,7 @@ const de: Content = {
     {
       sel: '[data-tour="settings"]',
       title: 'Einstellungen',
-      body: 'Sprache, Verlaufsgröße, Text-Limit, Autostart, Updates — und der Kürzel-Editor, in dem du jede Tastenkombination frei belegst.',
+      body: 'Sprache, Hell-/Dunkel-Modus, Verlaufsgröße, Text-Limit, Autostart, Updates — und der Kürzel-Editor, in dem du jede Tastenkombination frei belegst.',
     },
     {
       sel: '[data-tour="helpbtn"]',
@@ -336,6 +336,7 @@ const de: Content = {
       title: 'Einstellungen',
       body: [
         '• Sprache — Deutsch / English',
+        '• Modus — Dunkel (Standard) oder Hell; gilt für Hauptfenster und Quick-Picker',
         '• Verlaufsgröße — wie viele Einträge behalten werden (Pins zählen nicht gegen das Aufräumen)',
         '• Text ignorieren ab — sehr große Kopien gar nicht erst aufnehmen; Wert in KB, Standard 512 (0 = nie)',
         '• Bilder mitschneiden — Bild-Inhalte an/aus',
@@ -495,7 +496,7 @@ const en: Content = {
     {
       sel: '[data-tour="settings"]',
       title: 'Settings',
-      body: 'Language, history size, text limit, autostart, updates — and the shortcut editor where every key binding is yours to change.',
+      body: 'Language, light/dark mode, history size, text limit, autostart, updates — and the shortcut editor where every key binding is yours to change.',
     },
     {
       sel: '[data-tour="helpbtn"]',
@@ -659,6 +660,7 @@ const en: Content = {
       title: 'Settings',
       body: [
         '• Language — Deutsch / English',
+        '• Mode — dark (default) or light; applies to the main window and the quick picker',
         '• History size — how many items to keep (pins don’t count against cleanup)',
         '• Ignore text above — skip very large copies entirely; value in KB, default 512 (0 = never)',
         '• Capture images — image contents on/off',

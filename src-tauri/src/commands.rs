@@ -109,6 +109,8 @@ pub fn set_settings(app: AppHandle, st: State<'_, AppState>, new: Settings) -> R
         st.persist();
         let _ = app.emit("history-changed", ());
     }
+    // every window (main + quick picker) mirrors language/theme from settings
+    let _ = app.emit("settings-changed", ());
     Ok(())
 }
 

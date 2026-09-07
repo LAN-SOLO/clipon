@@ -36,6 +36,14 @@ pub struct Settings {
     /// settings files from older versions pick up the password-manager list.
     #[serde(default = "default_ignored_apps")]
     pub ignored_apps: Vec<String>,
+    /// Appearance: "dark" | "light". Field-level default so older settings
+    /// files keep the dark look.
+    #[serde(default = "default_theme")]
+    pub theme: String,
+}
+
+fn default_theme() -> String {
+    "dark".into()
 }
 
 fn default_shortcut_picker() -> String {
@@ -71,6 +79,7 @@ impl Default for Settings {
             keymap: Default::default(),
             paused: false,
             ignored_apps: default_ignored_apps(),
+            theme: default_theme(),
         }
     }
 }

@@ -152,6 +152,12 @@ export default function App() {
     api.checkUpdate().then(setUpdateAvail).catch(() => {});
   }, [refreshStack, refreshSnippets]);
 
+  // Darstellung aus den Einstellungen auf <html> spiegeln
+  useEffect(() => {
+    if (!settings) return;
+    document.documentElement.dataset.theme = settings.theme;
+  }, [settings]);
+
   useEffect(refreshItems, [refreshItems]);
 
   useEffect(() => {
