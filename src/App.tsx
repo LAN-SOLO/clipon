@@ -118,6 +118,8 @@ export default function App() {
   const [selStackId, setSelStackId] = useState<string | null>(null);
   const [selSnipId, setSelSnipId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  // settings could not be read — shown instead of an empty window
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [pickVal, setPickVal] = useState('#38bdf8');
   const toastTimer = useRef<number | undefined>(undefined);
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -142,10 +144,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    api.getSettings().then((s) => {
-      setSettings(s);
-      setPaused(s.paused);
-    });
+    api
+      .getSettings()
+      .then((s) => {
+        setSettings(s);
+        setPaused(s.paused);
+      })
+      .catch((e) => setLoadError(String(e)));
     refreshStack();
     refreshSnippets();
     // stiller Update-Check beim Start — installiert wird nur nach Klick
@@ -371,7 +376,14 @@ export default function App() {
     { key: 'images', label: t.images, action: 'filterImages' },
   ];
 
-  if (!settings) return null;
+  if (!settings) {
+    return loadError ? (
+      <div className="fatal">
+        <div className="fatal-title">clipon: Einstellungen konnten nicht geladen werden · settings could not be loaded</div>
+        <pre>{loadError}</pre>
+      </div>
+    ) : null;
+  }
 
   return (
     <div className="app">

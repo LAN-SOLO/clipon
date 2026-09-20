@@ -201,7 +201,10 @@ fn main() {
             if let Err(e) = register_shortcuts(&handle, &s) {
                 eprintln!("clipon: {e}");
             }
-            watcher::spawn(handle);
+            watcher::spawn(handle.clone());
+            if macos::IS_MACOS {
+                commands::ensure_picker(&handle);
+            }
             Ok(())
         })
         .on_window_event(|window, event| match event {

@@ -19,18 +19,6 @@
         "minHeight": 520,
         "resizable": true,
         "backgroundColor": "#0b1220"
-      },
-      {
-        "label": "picker",
-        "title": "clipon",
-        "width": 560,
-        "height": 420,
-        "resizable": false,
-        "decorations": false,
-        "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "visible": false,
-        "backgroundColor": "#0b1220"
       }
     ],
     "security": {

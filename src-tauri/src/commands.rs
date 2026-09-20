@@ -531,8 +531,30 @@ const PICKER_H: f64 = 420.0;
 
 /// Opens the picker near the cursor. Remembers the frontmost app first, so
 /// `picker_paste` knows where to return to once the picker has taken focus.
+/// The quick picker lives in its own always-on-top window. It is created
+/// here in code rather than in tauri.conf.json: on macOS eagerly at startup
+/// (so the first ⌘⇧Space is instant), on Windows/Linux only on first use —
+/// a second, hidden WebView2 created during startup left the main window
+/// black there.
+pub fn ensure_picker(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+    if let Some(win) = app.get_webview_window("picker") {
+        return Some(win);
+    }
+    tauri::WebviewWindowBuilder::new(app, "picker", tauri::WebviewUrl::App("index.html".into()))
+        .title("clipon")
+        .inner_size(PICKER_W, PICKER_H)
+        .resizable(false)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(false)
+        .background_color(tauri::utils::config::Color(0x0b, 0x12, 0x20, 0xff))
+        .build()
+        .ok()
+}
+
 pub fn open_picker(app: &AppHandle) {
-    let Some(win) = app.get_webview_window("picker") else { return };
+    let Some(win) = ensure_picker(app) else { return };
     let st = app.state::<AppState>();
     *st.picker_return.lock().unwrap() = st.frontmost.lock().unwrap().clone();
     if let Ok(cursor) = app.cursor_position() {
