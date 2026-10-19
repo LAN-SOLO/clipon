@@ -9,7 +9,9 @@ Clipboard-Manager: Verlauf, Snippets und Paste-Stack — lokal, verschlüsselt, 
 - **Bilder & Dateien:** auch im Finder kopierte Bilddateien landen als Bild im
   Verlauf (Suche per Dateiname); andere Dateien als Pfad-Eintrag.
 - **Paste-Stack:** Einträge einsammeln, der Reihe nach zurückholen
-  (`Cmd/Strg+Shift+B`), z. B. für Formulare.
+  (`Cmd/Strg+Shift+B`), z. B. für Formulare. Ein Eintrag verlässt den Stack
+  erst nach erfolgreichem Kopieren; nicht mehr kopierbare (Bilddatei fehlt)
+  werden mit Meldung übersprungen.
 - **Snippets:** Textbausteine, ein Klick — kopiert.
 - **Hilfe eingebaut:** First-Run-Tutorial, interaktive UI-Tour und
   durchsuchbares Handbuch (DE/EN).

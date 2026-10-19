@@ -632,37 +632,76 @@ pub async fn stack_clear(app: AppHandle, st: State<'_, AppState>) -> Result<(), 
     saved
 }
 
+/// Copies the next stack entry and only then removes it from the stack.
+/// A clipboard failure (locked, busy) keeps the entry for the next try. An
+/// entry that can never be copied (item gone, image file missing or damaged)
+/// is dropped from the stack and the error reported — otherwise it would
+/// block every following pop for good.
+fn pop_and_copy(st: &AppState) -> Result<Option<Uuid>, String> {
+    pop_with(&st.store, |id| copy_to_clipboard(st, id))
+}
+
+/// The pop logic, with the copy step injected (testable without a
+/// clipboard). `copy` locks the store itself, so no lock is held around it.
+fn pop_with(
+    store: &std::sync::Mutex<clipon_core::Store>,
+    mut copy: impl FnMut(Uuid) -> Result<(), String>,
+) -> Result<Option<Uuid>, String> {
+    loop {
+        let Some(id) = store.lock().unwrap().stack_peek() else { return Ok(None) };
+        if store.lock().unwrap().get(id).is_none() {
+            store.lock().unwrap().stack_remove(id);
+            continue;
+        }
+        match copy(id) {
+            Ok(()) => {
+                let mut s = store.lock().unwrap();
+                s.stack_remove(id);
+                s.touch(id);
+                return Ok(Some(id));
+            }
+            Err(e) if is_clipboard_err(&e) => return Err(e),
+            Err(e) => {
+                store.lock().unwrap().stack_remove(id);
+                return Err(e);
+            }
+        }
+    }
+}
+
+fn is_clipboard_err(e: &str) -> bool {
+    e.starts_with("clipboard:")
+}
+
 /// Copies the next stack item to the clipboard and removes it from the stack.
 #[tauri::command]
 pub async fn stack_pop_copy(app: AppHandle, st: State<'_, AppState>) -> Result<Option<ItemDto>, String> {
-    // copy first, pop after: a failing clipboard must not lose the entry
-    let Some(id) = st.store.lock().unwrap().stack_peek() else { return Ok(None) };
-    copy_to_clipboard(&st, id)?;
-    st.store.lock().unwrap().stack_remove(id);
-    let dto = {
-        let mut store = st.store.lock().unwrap();
-        store.touch(id);
-        store.get(id).map(to_dto)
-    };
-    let saved = st.persist();
-    let _ = app.emit("stack-changed", ());
-    let _ = app.emit("history-changed", ());
-    saved.map(|_| dto)
+    let popped = pop_and_copy(&st);
+    if !matches!(popped, Ok(None)) {
+        // also after a dropped broken entry: the stack view must follow
+        let saved = st.persist();
+        let _ = app.emit("stack-changed", ());
+        let _ = app.emit("history-changed", ());
+        let id = popped?;
+        saved?;
+        return Ok(id.and_then(|id| st.store.lock().unwrap().get(id).map(to_dto)));
+    }
+    Ok(None)
 }
 
-/// Shortcut path for the global hotkey: pop + copy without the command plumbing.
+/// Shortcut path for the global hotkey: pop + copy without the command
+/// plumbing. A failure is reported to the main window (`action-failed`).
 pub fn do_stack_pop(app: &AppHandle) {
     let st = app.state::<AppState>();
-    let id = st.store.lock().unwrap().stack_peek();
-    if let Some(id) = id {
-        if copy_to_clipboard(&st, id).is_ok() {
-            let mut store = st.store.lock().unwrap();
-            store.stack_remove(id);
-            store.touch(id);
-            drop(store);
+    match pop_and_copy(&st) {
+        Ok(None) => {}
+        popped => {
             report_persist(app, &st);
             let _ = app.emit("stack-changed", ());
             let _ = app.emit("history-changed", ());
+            if let Err(e) = popped {
+                let _ = app.emit("action-failed", e);
+            }
         }
     }
 }
@@ -875,7 +914,7 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_import, with_allowed_extension};
+    use super::{parse_import, pop_with, with_allowed_extension};
     use std::path::PathBuf;
 
     fn sample_json() -> Vec<u8> {
@@ -935,6 +974,33 @@ mod tests {
         assert_eq!(parse_import(enc.clone(), Some(String::new())).unwrap_err(), "passphrase-required");
         assert_eq!(parse_import(enc.clone(), Some("falsch".into())).unwrap_err(), "wrong-passphrase");
         assert_eq!(parse_import(enc, Some("geheim".into())).unwrap().items.len(), 1);
+    }
+
+    #[test]
+    fn stack_pop_keeps_entry_on_clipboard_error_and_drops_broken_ones() {
+        let mut store = clipon_core::Store::default();
+        let a = store.add_text("a").id;
+        let b = store.add_text("b").id;
+        let c = store.add_text("c").id;
+        store.stack_push(a);
+        store.stack_push(b);
+        store.stack_push(c);
+        let m = std::sync::Mutex::new(store);
+        // clipboard busy: error, entry stays at the head
+        let e = pop_with(&m, |_| Err("clipboard: busy".into())).unwrap_err();
+        assert!(e.starts_with("clipboard"));
+        assert_eq!(m.lock().unwrap().stack_peek(), Some(a));
+        // success: copied entry leaves the stack
+        assert_eq!(pop_with(&m, |_| Ok(())).unwrap(), Some(a));
+        // broken entry (e.g. image file missing): dropped and reported
+        let e = pop_with(&m, |_| Err("io: not found".into())).unwrap_err();
+        assert!(e.starts_with("io"));
+        assert_eq!(m.lock().unwrap().stack_peek(), Some(c));
+        // an id whose item is gone is skipped silently
+        m.lock().unwrap().stack.insert(0, uuid::Uuid::new_v4());
+        assert_eq!(pop_with(&m, |_| Ok(())).unwrap(), Some(c));
+        assert_eq!(pop_with(&m, |_| Ok(())).unwrap(), None);
+        assert_ne!(b, c);
     }
 
     #[test]

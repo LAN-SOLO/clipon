@@ -218,7 +218,8 @@ const de: Content = {
       body: [
         'Der Stack ist eine Warteschlange zum Einfügen in Reihenfolge: Einträge über „In den Stack“ sammeln, dann nacheinander abrufen.',
         '• „Nächsten kopieren“ im Stack-Bereich — oder von überall per Cmd/Strg+Shift+B',
-        '• Jeder Abruf kopiert den vordersten Eintrag und entfernt ihn aus dem Stack',
+        '• Jeder Abruf kopiert den vordersten Eintrag und entfernt ihn erst danach aus dem Stack — ist die Zwischenablage gerade gesperrt, bleibt er vorn und du versuchst es einfach noch einmal',
+        '• Lässt sich ein Eintrag gar nicht mehr kopieren (Bilddatei fehlt oder ist beschädigt), nimmt clipon ihn mit einer Meldung aus dem Stack, damit die übrigen weiter abrufbar sind; das gilt auch für das globale Kürzel (die Meldung erscheint im clipon-Fenster)',
         '• Einzelne Einträge entfernen oder den ganzen Stack leeren',
         '• „Zusammenführen“ fügt alle Text-Einträge des Stacks (in Stack-Reihenfolge, durch Zeilenumbrüche getrennt) zu einem neuen Verlaufs-Eintrag zusammen und kopiert ihn — der Stack bleibt dabei erhalten, Bilder werden übersprungen',
         'Typischer Ablauf: fünf Angaben aus einem Dokument kopieren, alle in den Stack, dann im Formular Feld für Feld Cmd/Strg+Shift+B → Cmd/Strg+V.',
@@ -548,7 +549,8 @@ const en: Content = {
       body: [
         'The stack is a queue for pasting in order: collect items via “Add to stack”, then retrieve them one by one.',
         '• “Copy next” in the stack view — or from anywhere via Cmd/Ctrl+Shift+B',
-        '• Each retrieval copies the front item and removes it from the stack',
+        '• Each retrieval copies the front item and only then removes it from the stack — if the clipboard is locked at that moment, the item stays in front and you simply try again',
+        '• If an item can no longer be copied at all (image file missing or damaged), clipon removes it from the stack with a message so the others stay retrievable; this also applies to the global shortcut (the message appears in the clipon window)',
         '• Remove single items or clear the whole stack',
         '• “Merge” joins all text items of the stack (in stack order, separated by line breaks) into one new history entry and copies it — the stack stays intact, images are skipped',
         'Typical flow: copy five values from a document, add all to the stack, then in the form: Cmd/Ctrl+Shift+B → Cmd/Ctrl+V, field by field.',

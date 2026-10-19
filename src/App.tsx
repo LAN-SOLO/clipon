@@ -223,6 +223,8 @@ export default function App() {
       listen<boolean>('paused-changed', (e) => setPaused(e.payload)),
       // the watcher, tray or a global shortcut could not save the history
       listen<string>('save-failed', (e) => failRef.current(e.payload)),
+      // a global shortcut (stack pop) failed while the window had no say
+      listen<string>('action-failed', (e) => actionFailRef.current(e.payload)),
     ];
     return () => {
       subs.forEach((p) => p.then((un) => un()));
@@ -231,6 +233,8 @@ export default function App() {
 
   const failRef = useRef(fail);
   failRef.current = (e: unknown) => showToast(`${t.saveFailedToast} ${errText(e)}`, 5000);
+  const actionFailRef = useRef(fail);
+  actionFailRef.current = fail;
 
   const selected = items.find((i) => i.id === selectedId) ?? null;
 

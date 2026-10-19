@@ -267,3 +267,44 @@ Fehlermustern L1–L13 aus Runde 1 der anderen Apps, plus die Restpunkte dieser 
 - [ ] Schreibgeschützter Datenordner bzw. voller Datenträger: Toast „Änderung konnte nicht gespeichert werden“ erscheint
 - [ ] JSON-Backup im Windows-Editor öffnen, speichern (UTF-8 mit BOM), importieren
 - [ ] Englische Oberfläche: falsche Passphrase, Update-Fehler (offline) → englische Meldung
+
+## Runde 2 – Verifikation (2026-10-20, unabhängige Zweitprüfung)
+
+Geprüft: Diff `6c3cae1..0d2ce2b` auf Regressionen (plattformübergreifend, neue
+Async-/Race-Fälle), alle Tests und Typechecks erneut ausgeführt, die geänderten
+Abläufe in der UI-Harness durchgespielt, L1–L13 an zusätzlichen Stellen nachgesehen.
+
+### Nachgeprüft und bestätigt
+
+- **L1:** `confirm()` des Dialog-Plugins 2.7.2 gegen den Rust-Code von Plugin und `rfd` 0.16 geprüft: bei eigenen Knopf-Texten liefert macOS (`NSAlert`) wie Windows (TaskDialog) `Custom("<Text>")`, der Vergleich `=== okLabel` stimmt also auf beiden Plattformen; „Abbrechen“ ergibt `false`. Capability `dialog:allow-message` vorhanden.
+- **L2:** jeder `Err(...)` im Backend ist ein Code aus der Testliste oder `io:`/`clipboard:`/`image:`/`internal:`/`shortcut:` mit Detail; keine deutsche/englische Prosa mehr. `errorText` lässt unbekannte Texte unverändert, übersetzt verschachtelte Codes und reicht Details roh in Klammern durch (Harness).
+- **L8/Async:** Kein Store-Lock wird über ein `await` gehalten; `persist()` serialisiert über den Store-Mutex, die Temp-Datei kann sich also nicht überschneiden. `set_settings`/`set_paused` bleiben synchron (Haupt-Thread) und schreiben die Einstellungen damit nacheinander. Gleichzeitige Exporte/Importe (z. B. Einstellungen geschlossen und neu geöffnet) laufen über den Store-Lock nacheinander; ein doppelter Import überspringt Duplikate.
+- **L5:** `is_transient_busy` greift nur unter Windows (`cfg!(windows)`); Windows-Typecheck prüft den `cfg(windows)`-Code wirklich (mit einem absichtlichen Windows-only-Fehler gegengeprüft, danach entfernt).
+- **L13:** Endpoint/Pubkey/Version 1.0.0 unverändert korrekt.
+
+### In dieser Prüfung zusätzlich behoben
+
+| Muster | Befund | Fix |
+|---|---|---|
+| L9/L11 | Runde 2 stellte „Nächsten kopieren“ auf „erst kopieren, dann entfernen“ um. Ließ sich der vorderste Eintrag *dauerhaft* nicht kopieren (Bilddatei fehlt/beschädigt, Entschlüsselung scheitert), blieb er für immer vorn: jeder weitere Abruf scheiterte, der Rest des Stacks war blockiert. Beim globalen Kürzel geschah das zudem **still** (Fehler wurde verworfen). | Gemeinsame Logik `pop_with` für Befehl und Kürzel: nur ein Zwischenablage-Fehler (`clipboard:`) lässt den Eintrag vorn; ein dauerhaft defekter Eintrag wird aus dem Stack genommen und der Grund gemeldet; Stack-IDs ohne Eintrag werden übersprungen. Das globale Kürzel meldet Fehler per Event `action-failed` → Toast im Hauptfenster. Test `stack_pop_keeps_entry_on_clipboard_error_and_drops_broken_ones`; Handbuch DE+EN und README ergänzt. |
+
+### Widerlegt / eingeschränkt
+
+- Keine Aussage aus Runde 2 widerlegt. Einschränkung: „keine stillen Fehlschläge“ galt nicht für das globale Stack-Kürzel (oben behoben). Hintergrund-Ladevorgänge (Liste, Einstellungen, Update-Prüfung beim Start) fangen Fehler weiterhin still ab — bewusst, sie haben keine Benutzeraktion.
+- `cargo audit` zusätzlich: `zbus_names`/`zvariant`/`zvariant_derive` „unmaintained“ (RUSTSEC-2026-0370/-0371/-0372), nur Linux (D-Bus), keine Sicherheitslücke — nicht angefasst.
+
+### Tests der Verifikation
+
+| Prüfung | Ergebnis |
+|---|---|
+| `cargo test --workspace` | 30 Core + 9 App = 39 grün (neu: Stack-Pop-Logik) |
+| `pnpm build` (tsc + vite) | fehlerfrei |
+| `cargo clippy --workspace --tests` | nur die bekannten `sort_by_key`-Hinweise |
+| Windows-Cross-Typecheck (`x86_64-pc-windows-msvc`, kein Link) | fehlerfrei, 0 Warnungen, vor und nach dem Fix |
+| UI-Harness (headless Chromium, gemocktes IPC mit echtem Dialog-Plugin-Verhalten) | 31 (Runde 1) + 13 (Runde 2) + 3 neu (`action-failed` DE/EN, roher/verschachtelter Fehlertext) + 3 mit Windows-Plattform — alle bestanden, 0 Konsolenfehler, 0 IPC-Argumentfehler |
+
+### Nur am echten Gerät prüfbar (zusätzlich)
+
+- [ ] Stack mit einem Bild-Eintrag, dessen Datei im Datenordner gelöscht wurde: Cmd/Strg+Shift+B → Meldung im Fenster, der nächste Druck liefert den folgenden Eintrag
+- [ ] Zwischenablage von anderer App blockiert (Windows): „Nächsten kopieren“ meldet den Fehler, der Eintrag bleibt vorn
+- [ ] Native Rückfrage (Snippet löschen, Verlauf leeren) unter Windows mit eigenen Knopf-Texten „Löschen“/„Abbrechen“
