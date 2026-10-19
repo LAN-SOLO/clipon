@@ -15,15 +15,32 @@ Clipboard-Manager: Verlauf, Snippets und Paste-Stack — lokal, verschlüsselt, 
   durchsuchbares Handbuch (DE/EN).
 - **Privat by design:** Verlauf AES-256-GCM-verschlüsselt auf der Platte,
   Schlüssel im System-Schlüsselbund. Kein Netzwerkzugriff außer Update-Check.
-- Tray, globale Shortcuts, Autostart, DE/EN, signierte In-App-Updates.
+- **Quick-Picker** (`Cmd/Ctrl+Shift+Space`): Suchfenster am Mauszeiger, fügt
+  direkt in die vorherige App ein (macOS mit Bedienungshilfen-Freigabe,
+  Windows ohne Freigabe).
+- **Passwort-Manager werden übersprungen:** macOS `org.nspasteboard.ConcealedType`
+  & Co., Windows `ExcludeClipboardContentFromMonitorProcessing` /
+  `CanIncludeInClipboardHistory = 0`; dazu eine Ignorier-Liste pro App
+  (Bundle-ID bzw. Programmdatei).
+- Werkzeuge (Trim, Groß/klein, JSON, URL-Kodierung), Snippet-Platzhalter,
+  Backup-Export/-Import (optional mit Passphrase verschlüsselt).
+- Tray, globale Shortcuts, Autostart, DE/EN, Hell/Dunkel, signierte In-App-Updates.
+- Läuft nur einmal pro Benutzer; ein zweiter Start holt das Fenster nach vorn.
+
+Version 1.0.0 — Audit-Stand, bekannte Grenzen und manuelle Testliste:
+`AUDIT-1.0.md`.
 
 ## Entwicklung
 
 ```sh
 pnpm install
 pnpm tauri dev        # App im Dev-Modus
-cargo test -p clipon-core   # Core-Tests
+cargo test --workspace      # Core- und App-Tests
+pnpm build            # Frontend (tsc + vite)
 ```
+
+Hinweis: Dev-Build und installierte App teilen Datenordner und Einzelinstanz-
+Sperre — vor `pnpm tauri dev` die installierte clipon beenden.
 
 Release-Build (macOS, mit Updater-Artefakten):
 
