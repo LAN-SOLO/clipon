@@ -2,7 +2,7 @@
 //! passphrase (PBKDF2-HMAC-SHA256 → AES-256-GCM). Unlike the store, an export
 //! never depends on the device keychain, so it can be restored anywhere.
 
-use crate::{ClipItem, Detected, ItemKind, Snippet, SourceApp, Store};
+use crate::{detect, fnv1a, make_preview, ClipItem, Detected, ItemKind, Snippet, SourceApp, Store};
 use aes_gcm::aead::rand_core::RngCore;
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -153,7 +153,30 @@ impl Store {
         mut save_image: impl FnMut(&str) -> Option<String>,
     ) -> ImportStats {
         let mut stats = ImportStats::default();
-        for e in bundle.items {
+        for mut e in bundle.items {
+            // An import file is untrusted input: everything derived from the
+            // content (hash, preview, counts, type) is recomputed instead of
+            // taken from the file, so dedupe and filters stay consistent.
+            match e.kind {
+                ItemKind::Text => {
+                    let Some(text) = e.text.as_deref().filter(|t| !t.is_empty()) else {
+                        stats.items_skipped += 1;
+                        continue;
+                    };
+                    e.hash = fnv1a(text.as_bytes());
+                    e.preview = make_preview(text);
+                    e.chars = text.chars().count();
+                    if e.detected != Detected::File {
+                        e.detected = detect(text);
+                    }
+                }
+                ItemKind::Image => {
+                    e.text = None;
+                    e.chars = 0;
+                    e.detected = Detected::Plain;
+                    e.preview = make_preview(&e.preview);
+                }
+            }
             if self
                 .items
                 .iter()
@@ -192,7 +215,12 @@ impl Store {
         self.items
             .sort_by(|a, b| b.last_copied_at.cmp(&a.last_copied_at));
 
-        for s in bundle.snippets {
+        for mut s in bundle.snippets {
+            s.name = s.name.trim().to_string();
+            if s.name.is_empty() {
+                stats.snippets_skipped += 1;
+                continue;
+            }
             if self
                 .snippets
                 .iter()
@@ -264,6 +292,34 @@ mod tests {
         let mut dst = Store::default();
         let stats = dst.merge_bundle(bundle, |_| None);
         assert_eq!(stats.items_added, 2);
+    }
+
+    #[test]
+    fn import_recomputes_derived_fields_and_skips_garbage() {
+        let json = r##"{"version":1,"exported_at":"2026-01-01T00:00:00Z","items":[
+          {"kind":"text","text":"#38bdf8","image_png_b64":null,"preview":"<lie>","chars":999,"detected":"url","pinned":true,"created_at":"2026-01-01T00:00:00Z","last_copied_at":"2026-01-01T00:00:00Z","times_copied":3,"hash":1},
+          {"kind":"text","text":"#38bdf8","image_png_b64":null,"preview":"dup","chars":7,"detected":"color","pinned":false,"created_at":"2026-01-01T00:00:00Z","last_copied_at":"2026-01-01T00:00:00Z","times_copied":1,"hash":2},
+          {"kind":"text","text":null,"image_png_b64":null,"preview":"no text","chars":0,"detected":"plain","pinned":false,"created_at":"2026-01-01T00:00:00Z","last_copied_at":"2026-01-01T00:00:00Z","times_copied":1,"hash":3},
+          {"kind":"text","text":"C:\\Users\\a\\b.pdf","image_png_b64":null,"preview":"","chars":0,"detected":"file","pinned":false,"created_at":"2026-01-01T00:00:00Z","last_copied_at":"2026-01-01T00:00:00Z","times_copied":1,"hash":4}
+        ],"snippets":[{"id":"9f2b2c1e-6a0f-4e0e-9b9e-1c2d3e4f5a6b","name":"   ","text":"x","created_at":"2026-01-01T00:00:00Z"}]}"##;
+        let bundle: ExportBundle = serde_json::from_str(json).unwrap();
+        let mut dst = Store::default();
+        dst.add_text("#38bdf8x"); // unrelated
+        let stats = dst.merge_bundle(bundle, |_| None);
+        assert_eq!(stats.items_added, 2);
+        assert_eq!(stats.items_skipped, 2); // in-file duplicate + item without text
+        assert_eq!(stats.snippets_added, 0);
+        assert_eq!(stats.snippets_skipped, 1); // empty name
+        let color = dst.items.iter().find(|i| i.text.as_deref() == Some("#38bdf8")).unwrap();
+        assert_eq!(color.preview, "#38bdf8");
+        assert_eq!(color.chars, 7);
+        assert_eq!(color.detected, Detected::Color);
+        assert_eq!(color.hash, fnv1a(b"#38bdf8"));
+        assert!(color.pinned);
+        let file = dst.items.iter().find(|i| i.detected == Detected::File).unwrap();
+        assert_eq!(file.text.as_deref(), Some(r"C:\Users\a\b.pdf"));
+        // re-copying the same text later dedupes against the imported entry
+        assert!(dst.add_text("#38bdf8").deduped);
     }
 
     #[test]

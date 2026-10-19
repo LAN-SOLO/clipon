@@ -1,7 +1,8 @@
-//! macOS-only system glue: pasteboard inspection (things `arboard` cannot
-//! see), frontmost-app tracking, app activation, Accessibility check and
-//! synthesized ⌘V. Every function has a no-op twin for other platforms so
-//! callers stay free of `cfg` noise.
+//! Platform glue, macOS first: pasteboard inspection (things `arboard`
+//! cannot see), frontmost-app tracking, app activation, Accessibility check
+//! and synthesized ⌘V. Every function has a twin for other platforms so
+//! callers stay free of `cfg` noise — on Windows backed by `win.rs`,
+//! elsewhere a no-op.
 //!
 //! Threading: NSWorkspace is only touched on the main thread — the activation
 //! observer writes into `AppState::frontmost`, and the watcher thread reads
@@ -141,7 +142,40 @@ mod imp {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+// Windows: the same entry points backed by Win32 (see `win.rs`). The
+// frontmost-app cache stays empty — the source app is read from the
+// clipboard owner at capture time instead.
+#[cfg(target_os = "windows")]
+mod imp {
+    use super::SourceApp;
+    use tauri::AppHandle;
+
+    pub fn pasteboard_change_count() -> i64 {
+        crate::win::clipboard_sequence().unwrap_or(-1)
+    }
+    pub fn pasteboard_has_concealed_types() -> bool {
+        crate::win::clipboard_concealed()
+    }
+    pub fn frontmost_app_now() -> Option<(SourceApp, i32)> {
+        None
+    }
+    pub fn install_frontmost_observer(_handle: AppHandle) {}
+    pub fn running_apps() -> Vec<(String, String)> {
+        crate::win::running_apps()
+    }
+    pub fn activate_pid(_pid: i32) -> bool {
+        false
+    }
+    /// Windows needs no permission to synthesize Ctrl+V.
+    pub fn ax_trusted(_prompt: bool) -> bool {
+        true
+    }
+    pub fn send_cmd_v() -> bool {
+        crate::win::send_ctrl_v()
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod imp {
     use super::SourceApp;
     use tauri::AppHandle;
@@ -173,3 +207,44 @@ mod imp {
 pub use imp::*;
 
 pub const IS_MACOS: bool = cfg!(target_os = "macos");
+pub const IS_WINDOWS: bool = cfg!(target_os = "windows");
+
+/// Whether the platform reports clipboard changes through a counter
+/// (macOS changeCount, Windows sequence number). Elsewhere the watcher
+/// compares content hashes on every tick.
+pub const HAS_CHANGE_COUNT: bool = IS_MACOS || IS_WINDOWS;
+
+/// The app a just-detected copy came from. macOS: the frontmost-app cache
+/// kept by the activation observer; Windows: the clipboard owner process.
+pub fn copy_source(state: &crate::state::AppState) -> Option<SourceApp> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = state;
+        crate::win::clipboard_source()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        state.frontmost_source()
+    }
+}
+
+/// Language of the user's system UI is German. GUI apps started from the
+/// Finder/Explorer usually have no `LANG`, so ask the OS first.
+pub fn system_language_is_german() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_foundation::NSLocale;
+        if let Some(first) = NSLocale::preferredLanguages().iter().next() {
+            return first.to_string().to_lowercase().starts_with("de");
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return crate::win::ui_language_is_german();
+    }
+    #[allow(unreachable_code)]
+    std::env::var("LC_ALL")
+        .or_else(|_| std::env::var("LANG"))
+        .map(|l| l.to_lowercase().starts_with("de"))
+        .unwrap_or(false)
+}

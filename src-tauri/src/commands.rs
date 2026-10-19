@@ -77,6 +77,7 @@ pub fn get_settings(st: State<'_, AppState>) -> Settings {
 
 #[tauri::command]
 pub fn set_settings(app: AppHandle, st: State<'_, AppState>, new: Settings) -> Result<(), String> {
+    let new = new.sanitized();
     let old = st.settings.lock().unwrap().clone();
     settings::store(&app, &new);
     *st.settings.lock().unwrap() = new.clone();
@@ -108,6 +109,10 @@ pub fn set_settings(app: AppHandle, st: State<'_, AppState>, new: Settings) -> R
         st.delete_blobs(&evicted);
         st.persist();
         let _ = app.emit("history-changed", ());
+        let _ = app.emit("stack-changed", ());
+    }
+    if old.language != new.language {
+        crate::update_tray_labels(&st, &new.language);
     }
     // every window (main + quick picker) mirrors language/theme from settings
     let _ = app.emit("settings-changed", ());
@@ -154,7 +159,7 @@ pub fn get_item_image(st: State<'_, AppState>, id: Uuid, max_dim: Option<u32>) -
         let item = store.get(id).ok_or("unbekanntes Element")?;
         item.image_file.clone().ok_or("kein Bild")?
     };
-    let blob = std::fs::read(st.blobs_dir().join(&file)).map_err(|e| e.to_string())?;
+    let blob = std::fs::read(st.blob_path(&file)?).map_err(|e| e.to_string())?;
     let png = clipon_core::decrypt(&st.key, &blob)?;
     let png = match max_dim {
         Some(max) => {
@@ -194,7 +199,7 @@ fn copy_to_clipboard(st: &AppState, id: Uuid) -> Result<(), String> {
         ItemKind::Text => write_clipboard_text(st, &text.ok_or("kein Text")?),
         ItemKind::Image => {
             let file = image_file.ok_or("kein Bild")?;
-            let blob = std::fs::read(st.blobs_dir().join(&file)).map_err(|e| e.to_string())?;
+            let blob = std::fs::read(st.blob_path(&file)?).map_err(|e| e.to_string())?;
             let png = clipon_core::decrypt(&st.key, &blob)?;
             let img = image::load_from_memory(&png).map_err(|e| e.to_string())?.to_rgba8();
             let (w, h) = img.dimensions();
@@ -232,6 +237,9 @@ fn add_text_and_copy(app: &AppHandle, st: &AppState, text: &str) -> Result<(), S
         store.add_text(text);
         store.enforce_limit(limit.max(1))
     };
+    if !evicted.is_empty() {
+        let _ = app.emit("stack-changed", ());
+    }
     st.delete_blobs(&evicted);
     st.persist();
     let _ = app.emit("history-changed", ());
@@ -273,6 +281,24 @@ pub fn merge_stack(app: AppHandle, st: State<'_, AppState>) -> Result<(), String
     add_text_and_copy(&app, &st, &text)
 }
 
+/// Paths come from the save dialog, but the IPC boundary must not become a
+/// "write any file" primitive: the extension is forced to the expected type.
+fn with_allowed_extension(path: &str, allowed: &[&str]) -> std::path::PathBuf {
+    let p = std::path::PathBuf::from(path);
+    let ok = p
+        .extension()
+        .map(|e| allowed.iter().any(|a| e.to_string_lossy().eq_ignore_ascii_case(a)))
+        .unwrap_or(false);
+    if ok {
+        p
+    } else {
+        let mut s = p.into_os_string();
+        s.push(".");
+        s.push(allowed[0]);
+        s.into()
+    }
+}
+
 /// Writes one item to disk: `.txt` for text, `.png` for images.
 #[tauri::command]
 pub fn export_item(st: State<'_, AppState>, id: Uuid, path: String) -> Result<(), String> {
@@ -281,10 +307,11 @@ pub fn export_item(st: State<'_, AppState>, id: Uuid, path: String) -> Result<()
         let item = store.get(id).ok_or("unbekanntes Element")?;
         (item.text.clone(), item.image_file.clone())
     };
+    let path = with_allowed_extension(&path, if text.is_some() { &["txt"] } else { &["png"] });
     let bytes = match (text, image_file) {
         (Some(t), _) => t.into_bytes(),
         (None, Some(f)) => {
-            let blob = std::fs::read(st.blobs_dir().join(&f)).map_err(|e| e.to_string())?;
+            let blob = std::fs::read(st.blob_path(&f)?).map_err(|e| e.to_string())?;
             clipon_core::decrypt(&st.key, &blob)?
         }
         _ => return Err("leeres Element".into()),
@@ -293,10 +320,20 @@ pub fn export_item(st: State<'_, AppState>, id: Uuid, path: String) -> Result<()
 }
 
 fn write_atomic(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
-    let tmp = path.with_extension("tmp");
+    // sibling temp file with its own suffix — never clobbers an existing
+    // "<name>.tmp" of the user
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".clipon-part");
+    let tmp = std::path::PathBuf::from(tmp);
     std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        e.to_string()
+    })
 }
+
+/// Upper bound for backup files read on import (they are loaded into memory).
+const MAX_IMPORT_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// Backup of history and/or snippets; encrypted with a passphrase if given.
 /// Async because the key derivation takes a moment — all locks are released
@@ -313,7 +350,7 @@ pub async fn export_data(
     let bundle = {
         let store = st.store.lock().unwrap();
         store.to_bundle(include_history, include_snippets, |file| {
-            let blob = std::fs::read(st.blobs_dir().join(file)).ok()?;
+            let blob = std::fs::read(st.blob_path(file).ok()?).ok()?;
             let png = clipon_core::decrypt(&st.key, &blob).ok()?;
             Some(b64.encode(png))
         })
@@ -326,7 +363,7 @@ pub async fn export_data(
         }
         None => serde_json::to_vec_pretty(&bundle).map_err(|e| e.to_string())?,
     };
-    write_atomic(std::path::Path::new(&path), &data)
+    write_atomic(&with_allowed_extension(&path, &["json", "clipon-backup"]), &data)
 }
 
 #[tauri::command]
@@ -338,6 +375,10 @@ pub async fn import_data(
 ) -> Result<clipon_core::export::ImportStats, String> {
     use clipon_core::export;
     let b64 = base64::engine::general_purpose::STANDARD;
+    let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    if size > MAX_IMPORT_BYTES {
+        return Err("Datei zu groß für einen clipon-Import (max. 1 GB)".into());
+    }
     let data = std::fs::read(&path).map_err(|e| e.to_string())?;
     let json = if export::is_encrypted(&data) {
         let p = passphrase
@@ -365,6 +406,7 @@ pub async fn import_data(
     st.delete_blobs(&evicted);
     st.persist();
     let _ = app.emit("history-changed", ());
+    let _ = app.emit("stack-changed", ());
     let _ = app.emit("snippets-changed", ());
     Ok(stats)
 }
@@ -384,6 +426,8 @@ pub fn delete_item(app: AppHandle, st: State<'_, AppState>, id: Uuid) {
     }
     st.persist();
     let _ = app.emit("history-changed", ());
+    // the item may have been on the paste stack, too
+    let _ = app.emit("stack-changed", ());
 }
 
 #[tauri::command]
@@ -393,6 +437,7 @@ pub fn clear_history(app: AppHandle, st: State<'_, AppState>) {
     st.delete_blobs(&files);
     st.persist();
     let _ = app.emit("history-changed", ());
+    let _ = app.emit("stack-changed", ());
 }
 
 // --- snippets ---
@@ -557,6 +602,11 @@ pub fn open_picker(app: &AppHandle) {
     let Some(win) = ensure_picker(app) else { return };
     let st = app.state::<AppState>();
     *st.picker_return.lock().unwrap() = st.frontmost.lock().unwrap().clone();
+    #[cfg(target_os = "windows")]
+    {
+        // the global shortcut fires while the target app is still in front
+        *st.picker_hwnd.lock().unwrap() = crate::win::foreground_window();
+    }
     if let Ok(cursor) = app.cursor_position() {
         let monitor = app.monitor_from_point(cursor.x, cursor.y).ok().flatten();
         if let Some(m) = monitor {
@@ -592,7 +642,7 @@ pub fn hide_picker(app: AppHandle) {
 }
 
 /// Copies the item, hides the picker, brings the previous app back and — with
-/// Accessibility permission — pastes via ⌘V. Returns whether it pasted;
+/// Accessibility permission (macOS) or always (Windows) — pastes via ⌘V/Ctrl+V. Returns whether it pasted;
 /// `false` means the content is on the clipboard and the user presses ⌘V.
 #[tauri::command]
 pub async fn picker_paste(app: AppHandle, st: State<'_, AppState>, id: Uuid) -> Result<bool, String> {
@@ -600,6 +650,29 @@ pub async fn picker_paste(app: AppHandle, st: State<'_, AppState>, id: Uuid) -> 
     st.store.lock().unwrap().touch(id);
     st.persist();
     let _ = app.emit("history-changed", ());
+
+    // Windows: hand the focus back *before* hiding — only the foreground
+    // process may call SetForegroundWindow — then type Ctrl+V.
+    #[cfg(target_os = "windows")]
+    {
+        let Some(hwnd) = *st.picker_hwnd.lock().unwrap() else {
+            hide_picker(app.clone());
+            return Ok(false);
+        };
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _ = app.run_on_main_thread(move || {
+            let _ = tx.send(crate::win::request_foreground(hwnd));
+        });
+        let requested = rx.recv_timeout(std::time::Duration::from_secs(1)).unwrap_or(false);
+        hide_picker(app.clone());
+        if !requested || !crate::win::wait_foreground(hwnd) {
+            return Ok(false);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        return Ok(crate::win::send_ctrl_v());
+    }
+
+    #[allow(unreachable_code)]
     hide_picker(app.clone());
 
     let target = st.picker_return.lock().unwrap().clone();
@@ -676,4 +749,26 @@ pub async fn install_update(app: AppHandle) -> Result<(), String> {
         .await
         .map_err(|e| format!("Update fehlgeschlagen: {e}"))?;
     app.restart();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::with_allowed_extension;
+    use std::path::PathBuf;
+
+    #[test]
+    fn export_paths_keep_or_get_the_expected_extension() {
+        assert_eq!(with_allowed_extension("/a/b.txt", &["txt"]), PathBuf::from("/a/b.txt"));
+        assert_eq!(with_allowed_extension("/a/b.TXT", &["txt"]), PathBuf::from("/a/b.TXT"));
+        assert_eq!(with_allowed_extension("/a/b", &["txt"]), PathBuf::from("/a/b.txt"));
+        assert_eq!(with_allowed_extension("/a/.zshrc", &["txt"]), PathBuf::from("/a/.zshrc.txt"));
+        assert_eq!(
+            with_allowed_extension(r"C:\Users\a\backup.clipon-backup", &["json", "clipon-backup"]),
+            PathBuf::from(r"C:\Users\a\backup.clipon-backup")
+        );
+        assert_eq!(
+            with_allowed_extension(r"C:\Users\a\evil.exe", &["png"]),
+            PathBuf::from(r"C:\Users\a\evil.exe.png")
+        );
+    }
 }

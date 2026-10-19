@@ -6,3 +6,11 @@ members = ["core", "src-tauri"]
 lto = true
 codegen-units = 1
 strip = true
+
+# PBKDF2 (600k rounds) is painfully slow unoptimized — keep tests/dev fast
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.pbkdf2]
+opt-level = 3
+[profile.dev.package.hmac]
+opt-level = 3

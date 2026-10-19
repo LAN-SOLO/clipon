@@ -40,6 +40,21 @@ pub fn should_capture_from(bundle_id: Option<&str>, ignored: &[String]) -> bool 
     }
 }
 
+/// Splits an executable path (Windows `C:\\…\\KeePass.exe` or Unix-style)
+/// into (file name, name without extension) — on Windows the file name is
+/// what the ignore list matches, like the bundle id on macOS.
+pub fn exe_names(path: &str) -> Option<(String, String)> {
+    let file = path.rsplit(['\\', '/']).next()?.to_string();
+    if file.is_empty() {
+        return None;
+    }
+    let stem = match file.rfind('.') {
+        Some(i) if i > 0 => file[..i].to_string(),
+        _ => file.clone(),
+    };
+    Some((file, stem))
+}
+
 /// The application that was frontmost when an item was copied.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceApp {
@@ -723,6 +738,22 @@ mod tests {
         s.stack_push(img);
         s.stack_push(a);
         assert_eq!(s.stack_merged_text("\n").as_deref(), Some("beta\nalpha"));
+    }
+
+    #[test]
+    fn exe_names_from_paths() {
+        assert_eq!(
+            exe_names(r"C:\Program Files\KeePass Password Safe 2\KeePass.exe"),
+            Some(("KeePass.exe".into(), "KeePass".into()))
+        );
+        assert_eq!(exe_names(r"D:\tools\noext"), Some(("noext".into(), "noext".into())));
+        assert_eq!(exe_names("/usr/bin/foo.bin"), Some(("foo.bin".into(), "foo".into())));
+        assert_eq!(exe_names(".hidden"), Some((".hidden".into(), ".hidden".into())));
+        assert_eq!(exe_names(r"C:\dir\"), None);
+        // ignore list matches the file name case-insensitively
+        let ignored = vec!["keepass.exe".to_string()];
+        let (file, _) = exe_names(r"C:\x\KeePass.exe").unwrap();
+        assert!(!should_capture_from(Some(&file), &ignored));
     }
 
     #[test]

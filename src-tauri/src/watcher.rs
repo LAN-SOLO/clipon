@@ -29,19 +29,25 @@ pub fn spawn(app: AppHandle) {
             if state.paused.load(Ordering::Relaxed) {
                 continue;
             }
-            if macos::IS_MACOS {
+            if macos::HAS_CHANGE_COUNT {
+                // macOS changeCount / Windows clipboard sequence number;
+                // negative = not available right now → check every tick
                 let cc = macos::pasteboard_change_count();
-                if cc == last_change_count {
-                    continue;
+                if cc >= 0 {
+                    if cc == last_change_count {
+                        continue;
+                    }
+                    // consume the change before any policy check, so a skipped
+                    // copy is never picked up on a later tick either
+                    last_change_count = cc;
                 }
-                // consume the change before any policy check, so a skipped
-                // copy is never picked up on a later tick either
-                last_change_count = cc;
+                // password managers mark their copies (macOS ConcealedType,
+                // Windows ExcludeClipboardContentFromMonitorProcessing & co.)
                 if macos::pasteboard_has_concealed_types() {
                     continue;
                 }
             }
-            let source = state.frontmost_source();
+            let source = macos::copy_source(&state);
             let ignored = state.settings.lock().unwrap().ignored_apps.clone();
             if !clipon_core::should_capture_from(
                 source.as_ref().and_then(|s| s.bundle_id.as_deref()),
