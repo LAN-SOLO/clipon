@@ -84,6 +84,9 @@ pub fn set_settings(app: AppHandle, st: State<'_, AppState>, new: Settings) -> R
     st.paused.store(new.paused, Ordering::Relaxed);
     sync_pause_menu(&st, new.paused);
 
+    // A failing step (autostart, shortcut registration) must not skip the
+    // remaining ones — the settings are already stored at this point.
+    let mut errors: Vec<String> = Vec::new();
     if old.autostart != new.autostart {
         use tauri_plugin_autostart::ManagerExt;
         let autolaunch = app.autolaunch();
@@ -92,20 +95,27 @@ pub fn set_settings(app: AppHandle, st: State<'_, AppState>, new: Settings) -> R
         } else {
             autolaunch.disable()
         };
-        res.map_err(|e| e.to_string())?;
+        if let Err(e) = res {
+            errors.push(e.to_string());
+        }
     }
     if old.shortcut_toggle != new.shortcut_toggle
         || old.shortcut_stack_pop != new.shortcut_stack_pop
         || old.shortcut_picker != new.shortcut_picker
     {
-        crate::register_shortcuts(&app, &new)?;
+        if let Err(e) = crate::register_shortcuts(&app, &new) {
+            errors.push(e);
+        }
     }
-    // shrink history if the limit went down
-    let evicted = {
+    // shrink history if the limit went down — text items have no blob, so
+    // compare the item count instead of the evicted blob list
+    let (shrunk, evicted) = {
         let mut store = st.store.lock().unwrap();
-        store.enforce_limit(new.history_limit.max(1) as usize)
+        let before = store.items.len();
+        let evicted = store.enforce_limit(new.history_limit.max(1) as usize);
+        (store.items.len() != before, evicted)
     };
-    if !evicted.is_empty() {
+    if shrunk {
         st.delete_blobs(&evicted);
         st.persist();
         let _ = app.emit("history-changed", ());
@@ -116,7 +126,11 @@ pub fn set_settings(app: AppHandle, st: State<'_, AppState>, new: Settings) -> R
     }
     // every window (main + quick picker) mirrors language/theme from settings
     let _ = app.emit("settings-changed", ());
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join(" · "))
+    }
 }
 
 #[tauri::command]
@@ -237,12 +251,12 @@ fn add_text_and_copy(app: &AppHandle, st: &AppState, text: &str) -> Result<(), S
         store.add_text(text);
         store.enforce_limit(limit.max(1))
     };
-    if !evicted.is_empty() {
-        let _ = app.emit("stack-changed", ());
-    }
     st.delete_blobs(&evicted);
     st.persist();
     let _ = app.emit("history-changed", ());
+    // limit eviction may have taken stack entries along (text items leave
+    // no blob behind, so `evicted` alone cannot tell)
+    let _ = app.emit("stack-changed", ());
     Ok(())
 }
 
@@ -599,14 +613,38 @@ pub fn ensure_picker(app: &AppHandle) -> Option<tauri::WebviewWindow> {
 }
 
 pub fn open_picker(app: &AppHandle) {
-    let Some(win) = ensure_picker(app) else { return };
+    // remember the paste target first — the global shortcut fires while the
+    // target app is still in front
     let st = app.state::<AppState>();
     *st.picker_return.lock().unwrap() = st.frontmost.lock().unwrap().clone();
     #[cfg(target_os = "windows")]
     {
-        // the global shortcut fires while the target app is still in front
         *st.picker_hwnd.lock().unwrap() = crate::win::foreground_window();
     }
+    if let Some(win) = app.get_webview_window("picker") {
+        present_picker(app, &win);
+        return;
+    }
+    // First use on Windows/Linux: this runs in the global-shortcut handler or
+    // a sync command, i.e. on the event-loop thread, where building a WebView2
+    // window deadlocks (tauri docs, "Known issues"). Build it on a worker
+    // thread instead; one build at a time.
+    static BUILDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if BUILDING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        if let Some(win) = ensure_picker(&handle) {
+            present_picker(&handle, &win);
+        }
+        BUILDING.store(false, Ordering::SeqCst);
+    });
+}
+
+/// Places the picker at the mouse pointer (clamped to the work area of that
+/// monitor), shows and focuses it.
+fn present_picker(app: &AppHandle, win: &tauri::WebviewWindow) {
     if let Ok(cursor) = app.cursor_position() {
         let monitor = app.monitor_from_point(cursor.x, cursor.y).ok().flatten();
         if let Some(m) = monitor {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { save } from '@tauri-apps/plugin-dialog';
+import { confirm, save } from '@tauri-apps/plugin-dialog';
 import { api, ClipItem, Filter, Settings, Snippet, Transform, UpdateInfo } from './api';
 import { dicts, Dict, Lang } from './i18n';
 import {
@@ -133,6 +133,17 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(null), 1400);
   }, []);
 
+  // native confirm via the dialog plugin — window.confirm is replaced by the
+  // plugin with an async stub, so a plain `if (window.confirm(...))` would
+  // always be truthy and clear without asking
+  const askClearHistory = () => {
+    confirm(t.clearConfirm, { kind: 'warning', okLabel: t.clear, cancelLabel: t.cancel })
+      .then((ok) => {
+        if (ok) return api.clearHistory();
+      })
+      .catch((e) => showToast(String(e)));
+  };
+
   const refreshItems = useCallback(() => {
     api.listItems(query, filter).then(setItems).catch(() => {});
   }, [query, filter]);
@@ -167,7 +178,12 @@ export default function App() {
 
   useEffect(() => {
     const subs = [
-      listen('history-changed', refreshItems),
+      // any history change can drop items from the paste stack too (limit
+      // eviction of text items, watcher captures) — keep both views in sync
+      listen('history-changed', () => {
+        refreshItems();
+        refreshStack();
+      }),
       listen('stack-changed', refreshStack),
       listen('snippets-changed', refreshSnippets),
       listen<boolean>('paused-changed', (e) => setPaused(e.payload)),
@@ -281,7 +297,7 @@ export default function App() {
         togglePaused();
         break;
       case 'clearHistory':
-        if (window.confirm(t.clearConfirm)) api.clearHistory();
+        askClearHistory();
         break;
       case 'selectPrev':
         moveSelection(-1);
@@ -477,7 +493,7 @@ export default function App() {
                 className="ghost"
                 title={t.clear}
                 onClick={() => {
-                  if (window.confirm(t.clearConfirm)) api.clearHistory();
+                  askClearHistory();
                 }}
               >
                 <IconTrash />
@@ -797,7 +813,12 @@ export default function App() {
                 setSettings(next);
                 setShowSettings(false);
               })
-              .catch((err) => showToast(`${t.saveError} ${String(err)}`));
+              .catch((err) => {
+                showToast(`${t.saveError} ${String(err)}`);
+                // the backend stores everything it can before reporting the
+                // failing step — mirror what it actually kept
+                api.getSettings().then(setSettings).catch(() => {});
+              });
           }}
         />
       )}

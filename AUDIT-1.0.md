@@ -146,3 +146,63 @@ Commands sind registriert.
 - [ ] Einzel-Export ohne Endung im Dateinamen → Datei bekommt .txt/.png
 - [ ] Backup-Export/-Import wie oben; Pfade mit Leerzeichen und Umlauten (`C:\Users\Jürgen\Desktop`)
 - [ ] In-App-Update vom installierten Stand auf das nächste Release (NSIS)
+
+## 7. Verifikation (unabhängige Zweitprüfung)
+
+Zweiter, skeptischer Durchgang über den Diff `32da487..666fc8b` plus eigene Läufe.
+
+### Nachgeprüft und bestätigt
+
+- `cargo test --workspace`: 27 (clipon-core) + 6 (clipon) = 33 bestanden, 0 fehlgeschlagen.
+- `pnpm build` (tsc + vite): OK. `cargo clippy --workspace --tests`: 0 Fehler, nur die bekannten `sort_by_key`-Stilhinweise.
+- Windows-Cross-Typecheck `cargo check --target x86_64-pc-windows-msvc --workspace --tests` (Stub-Header, kein Link): OK, 0 Warnungen — auch nach den Änderungen unten.
+- Version 1.0.0 in `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `Cargo.lock` (Paket `clipon`) und `APP_VERSION` der Einstellungen. `clipon-core` bleibt bewusst 0.1.0 (interne Bibliothek).
+- `build.yml`: nichts, was einen 1.0.0-`workflow_dispatch` auf macOS/Windows bricht; Signatur/Notarisierung unverändert. `File::try_lock` (Einzelinstanz) braucht Rust ≥ 1.89 — CI nutzt `stable`.
+- Win32-FFI in `win.rs`: `INPUT`-Layout (40 Byte x64), `EnumWindows`-Callback, `QueryFullProcessImageNameW`-Puffer, Clipboard öffnen/schließen paarweise — statisch geprüft, plausibel.
+
+### In dieser Runde zusätzlich behoben
+
+1. **„Verlauf leeren“ löschte ohne Rückfrage — auch bei „Abbrechen“ (Datenverlust).**
+   `tauri-plugin-dialog` 2.7 ersetzt `window.confirm` per Init-Skript durch eine
+   *async*-Funktion, die einen Befehl `plugin:dialog|confirm` aufruft, den das Plugin gar
+   nicht mehr hat. `if (window.confirm(…))` war damit immer wahr (Promise-Objekt) und
+   der Verlauf wurde sofort geleert. Die Mock-Harness hatte `window.confirm = () => true`
+   gesetzt und den Fehler so verdeckt. Jetzt: `confirm()` aus `@tauri-apps/plugin-dialog`
+   (Buttons „Verlauf leeren“/„Abbrechen“), Capability `dialog:allow-message`.
+   Harness bildet das echte Plugin-Verhalten jetzt nach; neues Szenario „Abbrechen löscht
+   nichts“ schlägt auf `666fc8b` fehl (0 von 10 Einträgen übrig) und besteht mit dem Fix.
+2. **Windows: Quick-Picker konnte beim ersten Strg+Shift+Space einfrieren.** Das Picker-Fenster
+   wird auf Windows erst bei Bedarf gebaut — und zwar im Global-Shortcut-Handler bzw. in
+   einem synchronen Befehl, also auf dem Event-Loop-Thread. Laut Tauri-Doku („Known issues“)
+   blockiert `WebviewWindowBuilder::build` dort auf Windows (WebView2). Jetzt wird das
+   Fenster beim ersten Aufruf auf einem eigenen Thread gebaut und danach angezeigt
+   (nur ein Bau gleichzeitig); das Einfüge-Ziel wird vorher gemerkt.
+3. **Verlaufsgröße verkleinern wurde nicht gespeichert, Liste nicht aktualisiert,** sobald nur
+   Text-Einträge verdrängt wurden (`enforce_limit` liefert nur Bild-Blobs zurück). Jetzt
+   Vergleich der Eintragszahl → speichern + `history-changed`/`stack-changed`.
+4. **Stack-Ansicht nach Verdrängung weiterhin veraltet** (der Fix aus Runde 1 griff nur, wenn
+   ein *Bild* verdrängt wurde, und gar nicht im Watcher). Jetzt lädt jede
+   Verlaufsänderung auch den Stack neu; `add_text_and_copy` meldet `stack-changed` immer.
+5. **`set_settings` brach beim ersten Fehler ab** (Autostart oder Kürzel-Registrierung), obwohl
+   die Einstellungen schon gespeichert waren: Limit, Tray-Sprache und `settings-changed`
+   wurden übersprungen, die UI zeigte den alten Stand. Jetzt laufen alle Schritte, Fehler
+   werden gesammelt gemeldet, die UI lädt danach den tatsächlich gespeicherten Stand.
+
+UI-Mock-Harness danach: 31/31 Szenarien bestanden, 0 Konsolenfehler.
+
+### Widerlegt / eingeschränkt
+
+- „Stack-Ansicht nach … Verdrängung aktualisiert“ war nur für Bild-Verdrängung richtig (s. 4).
+- „30/30 Szenarien“ galt nur mit einem `window.confirm`-Stub, den es in der echten App nicht gibt (s. 1).
+- Ein Harness-Szenario („Löschen eines Stack-Eintrags“) hing von der Reihenfolge ab und traf
+  den zusammengeführten Eintrag statt `input@…`; korrigiert, kein App-Fehler.
+
+### Weiterhin nur statisch geprüft (braucht Gerät)
+
+Alles aus Abschnitt 6, zusätzlich:
+- [ ] macOS + Windows: „Verlauf leeren“ → nativer Dialog; „Abbrechen“ lässt den Verlauf stehen
+- [ ] Windows: allererstes Strg+Shift+Space nach dem Start → Picker erscheint (kein Hänger), ↩ fügt in Notepad ein
+- [ ] Verlaufsgröße von 500 auf 10 senken → Liste sofort gekürzt, nach Neustart weiterhin 10
+
+Hinweis: Strg+Shift+V ist unter Windows in vielen Programmen „Als Nur-Text einfügen“; als
+globales Kürzel überdeckt clipon das systemweit. Im Kürzel-Editor änderbar, Standard unverändert.
