@@ -28,7 +28,7 @@ const de = {
   emptyColors:
     'Noch keine Farben.\nKopiere einen Farbwert wie #38bdf8, rgb(56, 189, 248) oder hsl(199, 89%, 60%) — oder wähle oben eine Farbe. Der System-Farbwähler hat eine Pipette zum Picken vom Bildschirm.',
   emptyImages:
-    'Noch keine Bilder.\nScreenshots, kopierte Grafiken und im Finder kopierte Bilddateien (PNG, JPEG, GIF, WebP, …) landen automatisch hier.',
+    'Noch keine Bilder.\nScreenshots, kopierte Grafiken und im Finder oder Explorer kopierte Bilddateien (PNG, JPEG, GIF, WebP, …) landen automatisch hier.',
   clear: 'Verlauf leeren',
   clearConfirm: 'Verlauf wirklich leeren?',
   copied: 'Kopiert',
@@ -114,7 +114,8 @@ const de = {
   pickerSearch: 'Suchen … ↩ fügt ein, Esc schließt',
   pickerEmpty: 'Keine Treffer',
   pickerPasteHint: '↩ fügt direkt in die vorherige App ein',
-  pickerCopyHint: '↩ kopiert — dann ⌘V in der Ziel-App (Direkt-Einfügen braucht die Bedienungshilfen-Berechtigung, siehe Einstellungen)',
+  pickerCopyHint: (paste: string) =>
+    `↩ kopiert — dann ${paste} in der Ziel-App (Direkt-Einfügen braucht auf dem Mac die Bedienungshilfen-Berechtigung, siehe Einstellungen)`,
   axTitle: 'Direktes Einfügen',
   axGranted: 'Berechtigung erteilt',
   axMissing: 'Berechtigung fehlt',
@@ -126,10 +127,11 @@ const de = {
   privacy: 'Privatsphäre',
   ignoredApps: 'Ignorierte Apps',
   ignoredAppsHint:
-    'Kopien aus diesen Apps werden nie aufgezeichnet. Passwort-Manager, die ihre Kopien als vertraulich markieren, werden zusätzlich immer übersprungen.',
+    'Kopien aus diesen Apps werden nie aufgezeichnet (macOS: Bundle-ID, Windows: Programmdatei). Passwort-Manager, die ihre Kopien als vertraulich markieren, werden zusätzlich immer übersprungen.',
   ignoredAppsEmpty: 'Keine App ignoriert.',
   ignoredAppsAddRunning: 'Laufende App hinzufügen …',
   ignoredAppsManual: 'Bundle-ID, z. B. com.example.app',
+  ignoredAppsManualWin: 'Programmdatei, z. B. KeePass.exe',
   // data
   dataSection: 'Daten',
   exportData: 'Exportieren …',
@@ -201,7 +203,7 @@ const en: typeof de = {
   emptyColors:
     'No colors yet.\nCopy a color value like #38bdf8, rgb(56, 189, 248) or hsl(199, 89%, 60%) — or pick one above. The system color picker includes an eyedropper for picking from the screen.',
   emptyImages:
-    'No images yet.\nScreenshots, copied graphics and image files copied in Finder (PNG, JPEG, GIF, WebP, …) land here automatically.',
+    'No images yet.\nScreenshots, copied graphics and image files copied in Finder or Explorer (PNG, JPEG, GIF, WebP, …) land here automatically.',
   clear: 'Clear history',
   clearConfirm: 'Really clear the history?',
   copied: 'Copied',
@@ -280,7 +282,8 @@ const en: typeof de = {
   pickerSearch: 'Search … ↩ pastes, Esc closes',
   pickerEmpty: 'No matches',
   pickerPasteHint: '↩ pastes straight into the previous app',
-  pickerCopyHint: '↩ copies — then ⌘V in the target app (direct paste needs the Accessibility permission, see Settings)',
+  pickerCopyHint: (paste: string) =>
+    `↩ copies — then ${paste} in the target app (on the Mac, direct paste needs the Accessibility permission, see Settings)`,
   axTitle: 'Direct paste',
   axGranted: 'Permission granted',
   axMissing: 'Permission missing',
@@ -291,10 +294,11 @@ const en: typeof de = {
   privacy: 'Privacy',
   ignoredApps: 'Ignored apps',
   ignoredAppsHint:
-    'Copies from these apps are never recorded. Password managers that mark their copies as confidential are always skipped as well.',
+    'Copies from these apps are never recorded (macOS: bundle id, Windows: program file). Password managers that mark their copies as confidential are always skipped as well.',
   ignoredAppsEmpty: 'No app ignored.',
   ignoredAppsAddRunning: 'Add running app …',
   ignoredAppsManual: 'Bundle id, e.g. com.example.app',
+  ignoredAppsManualWin: 'Program file, e.g. KeePass.exe',
   dataSection: 'Data',
   exportData: 'Export …',
   importData: 'Import …',

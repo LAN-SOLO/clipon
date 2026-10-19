@@ -75,10 +75,12 @@ export const GLOBAL_DEFAULTS = {
   shortcutPicker: 'CmdOrCtrl+Shift+Space',
 } as const;
 
-export const isMac = /mac/i.test(
+const platformName =
   (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform ??
-    navigator.platform
-);
+  navigator.platform;
+
+export const isMac = /mac/i.test(platformName);
+export const isWindows = /win/i.test(platformName);
 
 /** Full action-id → combo map: defaults overlaid with saved overrides. */
 export function resolveKeymap(settings: Settings): Record<ActionId, string> {

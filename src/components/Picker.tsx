@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { api, ClipItem, Settings } from '../api';
 import { dicts, Lang } from '../i18n';
 import { IconLogo } from '../icons';
+import { formatCombo } from '../shortcuts';
 
 const MAX_RESULTS = 10;
 
@@ -124,7 +125,7 @@ export function Picker() {
         ))}
       </div>
       <div className="pickerfoot">
-        {axOk === null ? '' : axOk ? t.pickerPasteHint : t.pickerCopyHint}
+        {axOk === null ? '' : axOk ? t.pickerPasteHint : t.pickerCopyHint(formatCombo('CmdOrCtrl+V'))}
       </div>
     </div>
   );

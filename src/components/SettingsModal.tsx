@@ -11,10 +11,18 @@ import {
   GLOBAL_DEFAULTS,
   hasRealModifier,
   isMac,
+  isWindows,
   resolveKeymap,
 } from '../shortcuts';
 
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '1.0.0';
+const HISTORY_MIN = 10;
+const HISTORY_MAX = 100000;
+const clampLimit = (raw: string) =>
+  Math.min(HISTORY_MAX, Math.max(HISTORY_MIN, Math.round(Number(raw)) || HISTORY_MIN));
+const clampKb = (raw: string) => Math.min(1048576, Math.max(0, Math.round(Number(raw)) || 0));
+const canListApps = isMac || isWindows;
+
 const AX_SETTINGS_URL =
   'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility';
 
@@ -52,6 +60,11 @@ export function SettingsModal({
   const [passphrase, setPassphrase] = useState('');
   const [dataMsg, setDataMsg] = useState<{ text: string; kind: 'ok' | 'error' } | null>(null);
   const [axOk, setAxOk] = useState<boolean | null>(null);
+
+  // number fields keep the raw text while typing (clamping on every key
+  // stroke made it impossible to type e.g. "2000"); clamped on blur/save
+  const [limitDraft, setLimitDraft] = useState(String(settings.historyLimit));
+  const [kbDraft, setKbDraft] = useState(String(settings.maxTextKb));
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) =>
     setS((prev) => ({ ...prev, [key]: value }));
@@ -171,7 +184,13 @@ export function SettingsModal({
   const loadRunning = () => {
     api
       .listRunningApps()
-      .then((apps) => setRunning(apps.filter((a) => !s.ignoredApps.includes(a.bundleId))))
+      .then((apps) =>
+        setRunning(
+          apps.filter(
+            (a) => !s.ignoredApps.some((x) => x.toLowerCase() === a.bundleId.toLowerCase())
+          )
+        )
+      )
       .catch(() => setRunning([]));
   };
 
@@ -273,10 +292,11 @@ export function SettingsModal({
           <span>{t.historyLimit}</span>
           <input
             type="number"
-            min={10}
-            max={10000}
-            value={s.historyLimit}
-            onChange={(e) => set('historyLimit', Math.max(10, Number(e.target.value) || 10))}
+            min={HISTORY_MIN}
+            max={HISTORY_MAX}
+            value={limitDraft}
+            onChange={(e) => setLimitDraft(e.target.value)}
+            onBlur={() => setLimitDraft(String(clampLimit(limitDraft)))}
           />
         </label>
 
@@ -285,8 +305,9 @@ export function SettingsModal({
           <input
             type="number"
             min={0}
-            value={s.maxTextKb}
-            onChange={(e) => set('maxTextKb', Math.max(0, Number(e.target.value) || 0))}
+            value={kbDraft}
+            onChange={(e) => setKbDraft(e.target.value)}
+            onBlur={() => setKbDraft(String(clampKb(kbDraft)))}
           />
         </label>
 
@@ -339,6 +360,7 @@ export function SettingsModal({
             </div>
           ))}
         </div>
+        {canListApps && (
         <div className="addrow">
           {running === null ? (
             <button onClick={loadRunning}>{t.ignoredAppsAddRunning}</button>
@@ -359,10 +381,11 @@ export function SettingsModal({
             </select>
           )}
         </div>
+        )}
         <div className="addrow">
           <input
             type="text"
-            placeholder={t.ignoredAppsManual}
+            placeholder={isWindows ? t.ignoredAppsManualWin : t.ignoredAppsManual}
             value={manualApp}
             onChange={(e) => setManualApp(e.target.value)}
             onKeyDown={(e) => {
@@ -501,7 +524,9 @@ export function SettingsModal({
             disabled={
               !s.shortcutToggle.trim() || !s.shortcutStackPop.trim() || !s.shortcutPicker.trim()
             }
-            onClick={() => onSave(s)}
+            onClick={() =>
+              onSave({ ...s, historyLimit: clampLimit(limitDraft), maxTextKb: clampKb(kbDraft) })
+            }
           >
             {t.save}
           </button>

@@ -293,7 +293,10 @@ export default function App() {
         if (view === 'history' && selectedId) copyItem(selectedId);
         else if (view === 'stack' && selStackId) copyItem(selStackId);
         else if (view === 'snippets' && curSnippet)
-          api.copySnippet(curSnippet.id).then(() => showToast(t.copied));
+          api
+            .copySnippet(curSnippet.id)
+            .then(() => showToast(t.copied))
+            .catch((e) => showToast(String(e)));
         break;
       case 'pinSelected':
         if (view === 'history' && selected) api.pinItem(selected.id, !selected.pinned);
@@ -754,7 +757,10 @@ export default function App() {
                 className={`row ${selSnipId === s.id ? 'selected' : ''}`}
                 onClick={() => {
                   setSelSnipId(s.id);
-                  api.copySnippet(s.id).then(() => showToast(t.copied));
+                  api
+                    .copySnippet(s.id)
+                    .then(() => showToast(t.copied))
+                    .catch((e) => showToast(String(e)));
                 }}
               >
                 <span className="kbadge">txt</span>
@@ -783,11 +789,12 @@ export default function App() {
           t={t}
           onClose={() => setShowSettings(false)}
           onSave={(s) => {
+            // pause may have been toggled (tray/shortcut) while the dialog was open
+            const next = { ...s, paused };
             api
-              .setSettings(s)
+              .setSettings(next)
               .then(() => {
-                setSettings(s);
-                setPaused(s.paused);
+                setSettings(next);
                 setShowSettings(false);
               })
               .catch((err) => showToast(`${t.saveError} ${String(err)}`));
@@ -883,6 +890,7 @@ function SnippetEditor({
 }) {
   const [name, setName] = useState(snippet?.name ?? '');
   const [text, setText] = useState(snippet?.text ?? '');
+  const [error, setError] = useState<string | null>(null);
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -896,12 +904,18 @@ function SnippetEditor({
           <textarea rows={6} value={text} onChange={(e) => setText(e.target.value)} />
         </label>
         <div className="note">{t.snippetPlaceholderHint}</div>
+        {error && <div className="note scerror">{error}</div>}
         <div className="btnrow">
           <button onClick={onClose}>{t.cancel}</button>
           <button
             className="primary"
             disabled={!name.trim() || !text}
-            onClick={() => api.saveSnippet(snippet?.id ?? null, name, text).then(onSaved)}
+            onClick={() =>
+              api
+                .saveSnippet(snippet?.id ?? null, name, text)
+                .then(onSaved)
+                .catch((e) => setError(String(e)))
+            }
           >
             {t.save}
           </button>
