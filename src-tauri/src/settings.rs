@@ -135,16 +135,20 @@ pub fn load(app: &tauri::AppHandle) -> Settings {
         .sanitized()
 }
 
-pub fn store(app: &tauri::AppHandle, settings: &Settings) {
-    if let Ok(json) = serde_json::to_string_pretty(settings) {
-        let path = settings_path(app);
-        // write + rename: a crash mid-write must not leave a truncated file
-        // (which would silently reset every setting on the next start)
-        let tmp = path.with_extension("json.tmp");
-        if std::fs::write(&tmp, json).and_then(|_| std::fs::rename(&tmp, &path)).is_err() {
-            eprintln!("clipon: could not save settings to {}", path.display());
-        }
-    }
+pub fn store(app: &tauri::AppHandle, settings: &Settings) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(settings).map_err(|e| format!("save-failed: {e}"))?;
+    let path = settings_path(app);
+    // write + rename: a crash mid-write must not leave a truncated file
+    // (which would silently reset every setting on the next start); the
+    // rename retries while Windows briefly locks the target (scanner, sync)
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, json)
+        .and_then(|_| clipon_core::replace_file(&tmp, &path))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            eprintln!("clipon: could not save settings to {}: {e}", path.display());
+            format!("save-failed: {e}")
+        })
 }
 
 #[cfg(test)]

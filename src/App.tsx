@@ -19,7 +19,8 @@ import {
   IconTrash,
   IconX,
 } from './icons';
-import { fmtHex, fmtHsl, fmtRgb, parseColor } from './color';
+import { cssColor, fmtHex, fmtHsl, fmtRgb, parseColor } from './color';
+import { errorText } from './errors';
 import { SettingsModal } from './components/SettingsModal';
 import { Help } from './components/Help';
 import { ActionId, comboFromEvent, formatCombo, hasRealModifier, resolveKeymap } from './shortcuts';
@@ -27,6 +28,21 @@ import { ActionId, comboFromEvent, formatCombo, hasRealModifier, resolveKeymap }
 type View = 'history' | 'stack' | 'snippets';
 
 const thumbCache = new Map<string, string>();
+
+/** Windows refuses these as file names, with or without extension. */
+const WIN_RESERVED = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])$/i;
+
+/** Suggested file name for "Export as file": letters/digits from the
+ *  preview, never a reserved Windows device name. */
+export function exportBaseName(preview: string): string {
+  const base =
+    preview
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40)
+      .replace(/-+$/, '') || 'clipon';
+  return WIN_RESERVED.test(base) ? `clipon-${base}` : base;
+}
 
 function Thumb({ id, maxDim, className }: { id: string; maxDim: number; className?: string }) {
   const [src, setSrc] = useState<string | null>(thumbCache.get(`${id}:${maxDim}`) ?? null);
@@ -127,11 +143,14 @@ export default function App() {
   const lang: Lang = settings?.language ?? 'de';
   const t = dicts[lang];
 
-  const showToast = useCallback((msg: string) => {
+  const showToast = useCallback((msg: string, ms = 1400) => {
     setToast(msg);
     window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 1400);
+    toastTimer.current = window.setTimeout(() => setToast(null), ms);
   }, []);
+  // backend errors arrive as codes — always shown, in the UI language
+  const errText = (e: unknown) => errorText(e, t, lang);
+  const fail = (e: unknown) => showToast(errText(e), 5000);
 
   // native confirm via the dialog plugin — window.confirm is replaced by the
   // plugin with an async stub, so a plain `if (window.confirm(...))` would
@@ -141,7 +160,22 @@ export default function App() {
       .then((ok) => {
         if (ok) return api.clearHistory();
       })
-      .catch((e) => showToast(String(e)));
+      .catch(fail);
+  };
+
+  // deleting a snippet loses typed text for good — ask first
+  const askDeleteSnippet = (s: Snippet) => {
+    confirm(t.deleteSnippetConfirm(s.name), {
+      kind: 'warning',
+      okLabel: t.delete,
+      cancelLabel: t.cancel,
+    })
+      .then((ok) => {
+        if (!ok) return;
+        if (selSnipId === s.id) setSelSnipId(null);
+        return api.deleteSnippet(s.id).then(refreshSnippets);
+      })
+      .catch(fail);
   };
 
   const refreshItems = useCallback(() => {
@@ -187,11 +221,16 @@ export default function App() {
       listen('stack-changed', refreshStack),
       listen('snippets-changed', refreshSnippets),
       listen<boolean>('paused-changed', (e) => setPaused(e.payload)),
+      // the watcher, tray or a global shortcut could not save the history
+      listen<string>('save-failed', (e) => failRef.current(e.payload)),
     ];
     return () => {
       subs.forEach((p) => p.then((un) => un()));
     };
   }, [refreshItems, refreshStack, refreshSnippets]);
+
+  const failRef = useRef(fail);
+  failRef.current = (e: unknown) => showToast(`${t.saveFailedToast} ${errText(e)}`, 5000);
 
   const selected = items.find((i) => i.id === selectedId) ?? null;
 
@@ -206,26 +245,31 @@ export default function App() {
     api
       .copyItem(id)
       .then(() => showToast(t.copied))
-      .catch(() => {});
+      .catch(fail);
   };
 
   const togglePaused = () => {
-    api.setPaused(!paused).then(() => setPaused(!paused));
+    const next = !paused;
+    // the backend switches the pause even when remembering it fails, and
+    // reports that via the error; the paused-changed event syncs the UI
+    api
+      .setPaused(next)
+      .then(() => setPaused(next))
+      .catch((e) => {
+        setPaused(next);
+        fail(e);
+      });
   };
 
   const exportItem = (item: ClipItem) => {
     const ext = item.kind === 'image' ? 'png' : 'txt';
-    const base =
-      item.preview
-        .replace(/[^\p{L}\p{N}]+/gu, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 40) || 'clipon';
+    const base = exportBaseName(item.preview);
     save({ defaultPath: `${base}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] })
       .then((path) => {
         if (!path) return;
         return api.exportItem(item.id, path).then(() => showToast(t.exported));
       })
-      .catch((e) => showToast(String(e)));
+      .catch((e) => showToast(`${t.exportError} ${errText(e)}`, 5000));
   };
 
   const transforms: { op: Transform; label: string }[] = [
@@ -238,6 +282,14 @@ export default function App() {
     { op: 'urlencode', label: t.tfUrlEncode },
     { op: 'urldecode', label: t.tfUrlDecode },
   ];
+
+  const popNext = () =>
+    api
+      .stackPopCopy()
+      .then((item) => {
+        if (item) showToast(`${t.copied}: ${item.preview.slice(0, 40)}`);
+      })
+      .catch(fail);
 
   // ---- keyboard shortcuts (bindings editable in the settings) -------------
   const moveSelection = (dir: 1 | -1) => {
@@ -312,13 +364,13 @@ export default function App() {
           api
             .copySnippet(curSnippet.id)
             .then(() => showToast(t.copied))
-            .catch((e) => showToast(String(e)));
+            .catch(fail);
         break;
       case 'pinSelected':
-        if (view === 'history' && selected) api.pinItem(selected.id, !selected.pinned);
+        if (view === 'history' && selected) api.pinItem(selected.id, !selected.pinned).catch(fail);
         break;
       case 'stackAddSelected':
-        if (view === 'history' && selectedId) api.stackAdd(selectedId);
+        if (view === 'history' && selectedId) api.stackAdd(selectedId).catch(fail);
         break;
       case 'editSelected':
         if (view === 'snippets' && curSnippet) setEditSnippet(curSnippet);
@@ -326,22 +378,19 @@ export default function App() {
       case 'deleteSelected':
         if (view === 'history' && selectedId) {
           setSelectedId(null);
-          api.deleteItem(selectedId);
+          api.deleteItem(selectedId).catch(fail);
         } else if (view === 'stack' && selStackId) {
           setSelStackId(null);
-          api.stackRemove(selStackId);
+          api.stackRemove(selStackId).catch(fail);
         } else if (view === 'snippets' && curSnippet) {
-          setSelSnipId(null);
-          api.deleteSnippet(curSnippet.id).then(refreshSnippets);
+          askDeleteSnippet(curSnippet);
         }
         break;
       case 'stackPopNext':
-        api.stackPopCopy().then((item) => {
-          if (item) showToast(`${t.copied}: ${item.preview.slice(0, 40)}`);
-        });
+        popNext();
         break;
       case 'stackClear':
-        api.stackClear();
+        api.stackClear().catch(fail);
         break;
       case 'newSnippet':
         setView('snippets');
@@ -417,7 +466,7 @@ export default function App() {
             <button
               key={f.key}
               className={`navbtn ${view === 'history' && filter === f.key ? 'active' : ''}`}
-              title={keymap ? formatCombo(keymap[f.action]) : undefined}
+              title={keymap ? formatCombo(keymap[f.action], lang) : undefined}
               onClick={() => {
                 setView('history');
                 setFilter(f.key);
@@ -431,7 +480,7 @@ export default function App() {
         <button
           className={`navbtn ${view === 'stack' ? 'active' : ''}`}
           data-tour="stack"
-          title={keymap ? formatCombo(keymap.viewStack) : undefined}
+          title={keymap ? formatCombo(keymap.viewStack, lang) : undefined}
           onClick={() => setView('stack')}
         >
           <IconStack /> {t.stack}
@@ -440,7 +489,7 @@ export default function App() {
         <button
           className={`navbtn ${view === 'snippets' ? 'active' : ''}`}
           data-tour="snippets"
-          title={keymap ? formatCombo(keymap.viewSnippets) : undefined}
+          title={keymap ? formatCombo(keymap.viewSnippets, lang) : undefined}
           onClick={() => setView('snippets')}
         >
           <IconEdit /> {t.snippets}
@@ -454,7 +503,7 @@ export default function App() {
         <button
           className="navbtn"
           data-tour="pause"
-          title={keymap ? formatCombo(keymap.togglePause) : undefined}
+          title={keymap ? formatCombo(keymap.togglePause, lang) : undefined}
           onClick={togglePaused}
         >
           {paused ? <IconPlay /> : <IconPause />}
@@ -463,7 +512,7 @@ export default function App() {
         <button
           className="navbtn"
           data-tour="settings"
-          title={keymap ? formatCombo(keymap.openSettings) : undefined}
+          title={keymap ? formatCombo(keymap.openSettings, lang) : undefined}
           onClick={() => setShowSettings(true)}
         >
           <IconGear /> {t.settings}
@@ -471,7 +520,7 @@ export default function App() {
         <button
           className="navbtn"
           data-tour="helpbtn"
-          title={keymap ? formatCombo(keymap.openHelp) : undefined}
+          title={keymap ? formatCombo(keymap.openHelp, lang) : undefined}
           onClick={() => window.dispatchEvent(new CustomEvent('clipon-open-help'))}
         >
           <IconHelp /> {t.help}
@@ -517,7 +566,7 @@ export default function App() {
                     api
                       .addTextItem(pickVal)
                       .then(() => showToast(`${t.copied}: ${pickVal}`))
-                      .catch(() => {})
+                      .catch(fail)
                   }
                 >
                   {t.addColor}
@@ -553,7 +602,7 @@ export default function App() {
                   >
                     <span className={`kbadge ${b.cls}`}>{b.label}</span>
                     {item.detected === 'color' && (
-                      <span className="swatch" style={{ background: item.preview }} />
+                      <span className="swatch" style={{ background: cssColor(item.preview) }} />
                     )}
                     {item.kind === 'image' ? (
                       <>
@@ -575,13 +624,13 @@ export default function App() {
                       <button className="ghost icon" title={t.copy} onClick={(e) => { e.stopPropagation(); copyItem(item.id); }}>
                         <IconCopy />
                       </button>
-                      <button className={`ghost icon ${item.pinned ? 'pinned' : ''}`} title={item.pinned ? t.unpin : t.pin} onClick={(e) => { e.stopPropagation(); api.pinItem(item.id, !item.pinned); }}>
+                      <button className={`ghost icon ${item.pinned ? 'pinned' : ''}`} title={item.pinned ? t.unpin : t.pin} onClick={(e) => { e.stopPropagation(); api.pinItem(item.id, !item.pinned).catch(fail); }}>
                         {item.pinned ? <IconPinFilled /> : <IconPin />}
                       </button>
-                      <button className="ghost icon" title={t.toStack} onClick={(e) => { e.stopPropagation(); api.stackAdd(item.id); }}>
+                      <button className="ghost icon" title={t.toStack} onClick={(e) => { e.stopPropagation(); api.stackAdd(item.id).catch(fail); }}>
                         <IconStack />
                       </button>
-                      <button className="ghost icon" title={t.delete} onClick={(e) => { e.stopPropagation(); if (selectedId === item.id) setSelectedId(null); api.deleteItem(item.id); }}>
+                      <button className="ghost icon" title={t.delete} onClick={(e) => { e.stopPropagation(); if (selectedId === item.id) setSelectedId(null); api.deleteItem(item.id).catch(fail); }}>
                         <IconTrash />
                       </button>
                     </span>
@@ -606,7 +655,7 @@ export default function App() {
                         api
                           .addTextItem(v)
                           .then(() => showToast(`${t.copied}: ${v}`))
-                          .catch(() => {})
+                          .catch(fail)
                       }
                     />
                   ) : (
@@ -663,7 +712,7 @@ export default function App() {
                             api
                               .transformItem(selected.id, tf.op)
                               .then(() => showToast(t.copied))
-                              .catch((e) => showToast(`${t.tfError} ${String(e)}`))
+                              .catch((e) => showToast(`${t.tfError} ${errText(e)}`, 5000))
                           }
                         >
                           {tf.label}
@@ -676,16 +725,16 @@ export default function App() {
                   <button className="primary" onClick={() => copyItem(selected.id)}>
                     {t.copy}
                   </button>
-                  <button onClick={() => api.pinItem(selected.id, !selected.pinned)}>
+                  <button onClick={() => api.pinItem(selected.id, !selected.pinned).catch(fail)}>
                     {selected.pinned ? t.unpin : t.pin}
                   </button>
-                  <button onClick={() => api.stackAdd(selected.id)}>{t.toStack}</button>
+                  <button onClick={() => api.stackAdd(selected.id).catch(fail)}>{t.toStack}</button>
                   <button onClick={() => exportItem(selected)}>{t.exportItem}</button>
                   <button
                     className="danger"
                     onClick={() => {
                       setSelectedId(null);
-                      api.deleteItem(selected.id);
+                      api.deleteItem(selected.id).catch(fail);
                     }}
                   >
                     {t.delete}
@@ -701,16 +750,12 @@ export default function App() {
         <div className="main">
           <div className="panelhead">
             <span className="hint">
-              {t.stackHint} <kbd>{formatCombo(settings.shortcutStackPop)}</kbd>
+              {t.stackHint} <kbd>{formatCombo(settings.shortcutStackPop, lang)}</kbd>
             </span>
             <button
               className="primary"
               disabled={stack.length === 0}
-              onClick={() =>
-                api.stackPopCopy().then((item) => {
-                  if (item) showToast(`${t.copied}: ${item.preview.slice(0, 40)}`);
-                })
-              }
+              onClick={popNext}
             >
               {t.popNext}
             </button>
@@ -721,12 +766,12 @@ export default function App() {
                 api
                   .mergeStack()
                   .then(() => showToast(t.merged))
-                  .catch(() => showToast(t.mergeNoText))
+                  .catch(fail)
               }
             >
               {t.mergeStack}
             </button>
-            <button disabled={stack.length === 0} onClick={() => api.stackClear()}>
+            <button disabled={stack.length === 0} onClick={() => api.stackClear().catch(fail)}>
               {t.stackClear}
             </button>
           </div>
@@ -746,7 +791,7 @@ export default function App() {
                   {item.kind === 'image' && <Thumb id={item.id} maxDim={96} className="thumb" />}
                   <span className="preview">{item.preview}</span>
                   <span className="actions">
-                    <button className="ghost icon" title={t.remove} onClick={() => api.stackRemove(item.id)}>
+                    <button className="ghost icon" title={t.remove} onClick={(e) => { e.stopPropagation(); if (selStackId === item.id) setSelStackId(null); api.stackRemove(item.id).catch(fail); }}>
                       <IconX />
                     </button>
                   </span>
@@ -776,7 +821,7 @@ export default function App() {
                   api
                     .copySnippet(s.id)
                     .then(() => showToast(t.copied))
-                    .catch((e) => showToast(String(e)));
+                    .catch(fail);
                 }}
               >
                 <span className="kbadge">txt</span>
@@ -789,7 +834,7 @@ export default function App() {
                   <button className="ghost icon" title={t.edit} onClick={(e) => { e.stopPropagation(); setEditSnippet(s); }}>
                     <IconEdit />
                   </button>
-                  <button className="ghost icon" title={t.delete} onClick={(e) => { e.stopPropagation(); api.deleteSnippet(s.id).then(refreshSnippets); }}>
+                  <button className="ghost icon" title={t.delete} onClick={(e) => { e.stopPropagation(); askDeleteSnippet(s); }}>
                     <IconTrash />
                   </button>
                 </span>
@@ -814,7 +859,7 @@ export default function App() {
                 setShowSettings(false);
               })
               .catch((err) => {
-                showToast(`${t.saveError} ${String(err)}`);
+                showToast(`${t.saveError} ${errText(err)}`, 6000);
                 // the backend stores everything it can before reporting the
                 // failing step — mirror what it actually kept
                 api.getSettings().then(setSettings).catch(() => {});
@@ -826,6 +871,7 @@ export default function App() {
       {editSnippet && (
         <SnippetEditor
           t={t}
+          lang={lang}
           snippet={editSnippet === 'new' ? null : editSnippet}
           onClose={() => setEditSnippet(null)}
           onSaved={() => {
@@ -845,7 +891,10 @@ export default function App() {
             disabled={installing}
             onClick={() => {
               setInstalling(true);
-              api.installUpdate().catch(() => setInstalling(false));
+              api.installUpdate().catch((e) => {
+                setInstalling(false);
+                fail(e);
+              });
             }}
           >
             {installing ? t.updateInstalling : t.updateInstall}
@@ -883,7 +932,7 @@ function ColorCard({
   ];
   return (
     <div className="colorcard">
-      <div className="bigswatch" style={{ background: value }} />
+      <div className="bigswatch" style={{ background: cssColor(value) }} />
       <div className="content mono original">{value}</div>
       {rows.map(([label, v]) => (
         <div key={label} className="crow">
@@ -900,11 +949,13 @@ function ColorCard({
 
 function SnippetEditor({
   t,
+  lang,
   snippet,
   onClose,
   onSaved,
 }: {
   t: Dict;
+  lang: Lang;
   snippet: Snippet | null;
   onClose: () => void;
   onSaved: () => void;
@@ -935,7 +986,7 @@ function SnippetEditor({
               api
                 .saveSnippet(snippet?.id ?? null, name, text)
                 .then(onSaved)
-                .catch((e) => setError(String(e)))
+                .catch((e) => setError(errorText(e, t, lang)))
             }
           >
             {t.save}

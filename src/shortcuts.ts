@@ -1,5 +1,5 @@
 import { Settings } from './api';
-import { Dict } from './i18n';
+import { Dict, Lang } from './i18n';
 
 /** In-app keyboard shortcuts: every clickable action has an action id, a
  *  default combo and an entry in the settings editor. Combos are stored in
@@ -156,8 +156,19 @@ const KEY_GLYPHS: Record<string, string> = {
   Backquote: '`',
 };
 
-/** Human-readable form: "⌘⇧V" on macOS, "Ctrl+Shift+V" elsewhere. */
-export function formatCombo(combo: string): string {
+/** Name of the Ctrl key as printed on the keyboard: "Strg" on German
+ *  keyboards (Windows/Linux), "Ctrl" otherwise. */
+export const ctrlName = (lang: Lang): string => (lang === 'de' ? 'Strg' : 'Ctrl');
+
+/** "⌘ oder ⌥" / "Strg oder Alt" — for hints about required modifiers. */
+export function modifierWords(lang: Lang): string {
+  const or = lang === 'de' ? 'oder' : 'or';
+  return isMac ? `⌘ ${or} ⌥` : `${ctrlName(lang)} ${or} Alt`;
+}
+
+/** Human-readable form: "⌘⇧V" on macOS, "Strg+Shift+V" (German) or
+ *  "Ctrl+Shift+V" elsewhere. */
+export function formatCombo(combo: string, lang: Lang): string {
   const parts = combo.split('+');
   const key = parts[parts.length - 1];
   const mods = parts.slice(0, -1);
@@ -169,5 +180,5 @@ export function formatCombo(combo: string): string {
         .join('') + shown
     );
   }
-  return [...mods.map((mod) => (mod === 'CmdOrCtrl' ? 'Ctrl' : mod)), shown].join('+');
+  return [...mods.map((mod) => (mod === 'CmdOrCtrl' ? ctrlName(lang) : mod)), shown].join('+');
 }

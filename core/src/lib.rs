@@ -159,11 +159,23 @@ pub fn detect(text: &str) -> Detected {
     // functional color notations may contain spaces: rgb(56, 189, 248)
     if !t.contains('\n') && t.ends_with(')') {
         let lower = t.to_lowercase();
-        if ["rgb(", "rgba(", "hsl(", "hsla("]
+        if let Some(open) = ["rgb(", "rgba(", "hsl(", "hsla("]
             .iter()
-            .any(|p| lower.starts_with(p))
+            .find(|p| lower.starts_with(**p))
         {
-            return Detected::Color;
+            // only numbers, units and separators inside — the value is shown
+            // as a CSS colour, so "rgb(0 0 0) url(…)" must not pass as one
+            let inner = &lower[open.len()..lower.len() - 1];
+            if !inner.trim().is_empty()
+                && inner.chars().all(|c| {
+                    c.is_ascii_digit()
+                        || c.is_ascii_whitespace()
+                        || matches!(c, ',' | '.' | '%' | '/' | '-' | '+')
+                        || "degradtunone".contains(c)
+                })
+            {
+                return Detected::Color;
+            }
         }
     }
     if single_token(t) {
@@ -494,7 +506,7 @@ pub fn encrypt(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, String> {
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
     let ct = cipher(key)
         .encrypt(&nonce, plaintext)
-        .map_err(|_| "encryption failed".to_string())?;
+        .map_err(|_| "encrypt-failed".to_string())?;
     let mut out = Vec::with_capacity(STORE_MAGIC.len() + 12 + ct.len());
     out.extend_from_slice(STORE_MAGIC);
     out.extend_from_slice(&nonce);
@@ -504,26 +516,77 @@ pub fn encrypt(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, String> {
 
 pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, String> {
     if data.len() < STORE_MAGIC.len() + 12 || &data[..STORE_MAGIC.len()] != STORE_MAGIC {
-        return Err("not a clipon store file".into());
+        return Err("not-clipon-file".into());
     }
     let nonce_start = STORE_MAGIC.len();
     let nonce = Nonce::from_slice(&data[nonce_start..nonce_start + 12]);
     cipher(key)
         .decrypt(nonce, &data[nonce_start + 12..])
-        .map_err(|_| "decryption failed (wrong key or corrupted file)".to_string())
+        .map_err(|_| "decrypt-failed".to_string())
+}
+
+/// How often a file operation is retried when Windows reports the file as
+/// in use (virus scanner, backup/sync client, indexer holding it briefly).
+const BUSY_RETRIES: u32 = 8;
+
+/// Windows error codes for "file is in use": ERROR_ACCESS_DENIED (5, also
+/// returned for a target that is open without FILE_SHARE_DELETE),
+/// ERROR_SHARING_VIOLATION (32), ERROR_LOCK_VIOLATION (33).
+pub fn is_transient_busy(e: &std::io::Error) -> bool {
+    cfg!(windows) && matches!(e.raw_os_error(), Some(5) | Some(32) | Some(33))
+}
+
+/// Runs `op`, retrying with a short back-off while `transient` says the
+/// error is a temporary lock. Generic so the retry logic is testable on
+/// every platform.
+pub fn retry_busy<T>(
+    mut op: impl FnMut() -> std::io::Result<T>,
+    transient: impl Fn(&std::io::Error) -> bool,
+) -> std::io::Result<T> {
+    let mut attempt = 0;
+    loop {
+        match op() {
+            Ok(v) => return Ok(v),
+            Err(e) if attempt < BUSY_RETRIES && transient(&e) => {
+                attempt += 1;
+                std::thread::sleep(std::time::Duration::from_millis(25 * u64::from(attempt)));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// Atomically replaces `to` with `from` (rename), retrying on Windows while
+/// another process briefly holds one of the files open.
+pub fn replace_file(from: &Path, to: &Path) -> std::io::Result<()> {
+    retry_busy(|| std::fs::rename(from, to), is_transient_busy)
+}
+
+/// Reads a file, retrying on Windows while it is briefly locked.
+pub fn read_file(path: &Path) -> std::io::Result<Vec<u8>> {
+    retry_busy(|| std::fs::read(path), is_transient_busy)
+}
+
+/// Strips a leading UTF-8 byte-order mark (Windows editors such as Notepad
+/// save JSON with one; serde_json rejects it).
+pub fn strip_bom(data: &[u8]) -> &[u8] {
+    data.strip_prefix(b"\xEF\xBB\xBF".as_slice()).unwrap_or(data)
 }
 
 pub fn save_store(store: &Store, path: &Path, key: &[u8; 32]) -> Result<(), String> {
     let json = serde_json::to_vec(store).map_err(|e| e.to_string())?;
     let blob = encrypt(key, &json)?;
     let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, &blob).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| e.to_string())?;
+    std::fs::write(&tmp, &blob).map_err(|e| format!("io: {e}"))?;
+    replace_file(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("io: {e}")
+    })?;
     Ok(())
 }
 
 pub fn load_store(path: &Path, key: &[u8; 32]) -> Result<Store, String> {
-    let data = std::fs::read(path).map_err(|e| e.to_string())?;
+    let data = read_file(path).map_err(|e| format!("io: {e}"))?;
     let json = decrypt(key, &data)?;
     serde_json::from_slice(&json).map_err(|e| e.to_string())
 }
@@ -600,6 +663,11 @@ mod tests {
         assert_eq!(detect("rgba(56, 189, 248, 0.5)"), Detected::Color);
         assert_eq!(detect("hsl(199, 89%, 60%)"), Detected::Color);
         assert_eq!(detect("rgb( but no close paren"), Detected::Plain);
+        assert_eq!(detect("hsl(199deg 89% 60% / 0.5)"), Detected::Color);
+        // CSS that would load something must not be treated as a colour
+        assert_eq!(detect("rgb(0 0 0) url(https://example.com/x.png)"), Detected::Plain);
+        assert_eq!(detect("rgb(0,0,0);background:url(x)"), Detected::Plain);
+        assert_eq!(detect("rgb()"), Detected::Plain);
         assert_eq!(detect("fn main() {\n    println!(\"hi\");\n}"), Detected::Code);
         assert_eq!(detect("hello world"), Detected::Plain);
         assert_eq!(detect("#nothex"), Detected::Plain);
@@ -684,6 +752,67 @@ mod tests {
         assert_eq!(loaded.items[0].text.as_deref(), Some("geheim aber nur so mittel"));
         let wrong = [8u8; 32];
         assert!(load_store(&path, &wrong).is_err());
+    }
+
+    #[test]
+    fn busy_files_are_retried_then_reported() {
+        use std::io::{Error, ErrorKind};
+        let busy = |e: &Error| e.kind() == ErrorKind::WouldBlock;
+        // locked twice, then free: succeeds
+        let mut calls = 0;
+        let r = retry_busy(
+            || {
+                calls += 1;
+                if calls < 3 { Err(Error::from(ErrorKind::WouldBlock)) } else { Ok(calls) }
+            },
+            busy,
+        );
+        assert_eq!(r.unwrap(), 3);
+        // permanently locked: gives up after the retries
+        let mut calls = 0;
+        let r: std::io::Result<()> = retry_busy(
+            || {
+                calls += 1;
+                Err(Error::from(ErrorKind::WouldBlock))
+            },
+            busy,
+        );
+        assert!(r.is_err());
+        assert_eq!(calls, BUSY_RETRIES + 1);
+        // other errors are not retried
+        let mut calls = 0;
+        let r: std::io::Result<()> = retry_busy(
+            || {
+                calls += 1;
+                Err(Error::from(ErrorKind::NotFound))
+            },
+            busy,
+        );
+        assert!(r.is_err());
+        assert_eq!(calls, 1);
+        // the real predicate only fires on Windows sharing/lock errors
+        assert_eq!(is_transient_busy(&Error::from_raw_os_error(32)), cfg!(windows));
+        assert!(!is_transient_busy(&Error::from(ErrorKind::NotFound)));
+    }
+
+    #[test]
+    fn bom_is_stripped() {
+        assert_eq!(strip_bom(b"\xEF\xBB\xBF{}"), b"{}");
+        assert_eq!(strip_bom(b"{}"), b"{}");
+        assert_eq!(strip_bom(b""), b"");
+    }
+
+    #[test]
+    fn save_replaces_existing_store() {
+        let path = tmp_path("replace.clipon");
+        let key = [3u8; 32];
+        let mut s = Store::default();
+        s.add_text("eins");
+        save_store(&s, &path, &key).unwrap();
+        s.add_text("zwei");
+        save_store(&s, &path, &key).unwrap();
+        assert_eq!(load_store(&path, &key).unwrap().items.len(), 2);
+        assert!(!path.with_extension("tmp").exists());
     }
 
     fn app(id: &str, name: &str) -> Option<SourceApp> {

@@ -101,7 +101,7 @@ fn handle_text(app: &AppHandle, state: &AppState, text: &str, source: Option<Sou
         store.enforce_limit(limit.max(1))
     };
     state.delete_blobs(&evicted);
-    state.persist();
+    crate::commands::report_persist(app, state);
     let _ = app.emit("history-changed", ());
 }
 
@@ -153,7 +153,7 @@ fn handle_files(
         changed = true;
     }
     if changed {
-        state.persist();
+        crate::commands::report_persist(app, state);
         let _ = app.emit("history-changed", ());
     }
 }
@@ -259,7 +259,7 @@ fn handle_image(app: &AppHandle, state: &AppState, img: &ImageData, source: Opti
         store.enforce_limit(limit.max(1))
     };
     state.delete_blobs(&evicted);
-    state.persist();
+    crate::commands::report_persist(app, state);
     let _ = app.emit("history-changed", ());
 }
 

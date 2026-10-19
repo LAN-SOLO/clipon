@@ -225,26 +225,26 @@ pub fn register_shortcuts(app: &AppHandle, s: &Settings) -> Result<(), String> {
             toggle_main_window(app);
         }
     }) {
-        errors.push(format!("Shortcut „{}“: {e}", s.shortcut_toggle));
+        errors.push(format!("shortcut: {}: {e}", s.shortcut_toggle));
     }
     if let Err(e) = gs.on_shortcut(s.shortcut_stack_pop.as_str(), |app, _shortcut, event| {
         if event.state() == ShortcutState::Pressed {
             commands::do_stack_pop(app);
         }
     }) {
-        errors.push(format!("Shortcut „{}“: {e}", s.shortcut_stack_pop));
+        errors.push(format!("shortcut: {}: {e}", s.shortcut_stack_pop));
     }
     if let Err(e) = gs.on_shortcut(s.shortcut_picker.as_str(), |app, _shortcut, event| {
         if event.state() == ShortcutState::Pressed {
             commands::open_picker(app);
         }
     }) {
-        errors.push(format!("Shortcut „{}“: {e}", s.shortcut_picker));
+        errors.push(format!("shortcut: {}: {e}", s.shortcut_picker));
     }
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(errors.join(" · "))
+        Err(errors.join(" | "))
     }
 }
 
@@ -269,7 +269,10 @@ fn build_tray(
                     .state::<AppState>()
                     .paused
                     .load(std::sync::atomic::Ordering::Relaxed);
-                commands::set_paused(app.clone(), app.state::<AppState>(), now);
+                if let Err(e) = commands::set_paused(app.clone(), app.state::<AppState>(), now) {
+                    use tauri::Emitter;
+                    let _ = app.emit("save-failed", e);
+                }
             }
             "quit" => app.exit(0),
             _ => {}

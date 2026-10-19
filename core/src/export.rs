@@ -89,7 +89,7 @@ pub fn encrypt_export(passphrase: &str, json: &[u8]) -> Result<Vec<u8>, String> 
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
     let ct = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key))
         .encrypt(&nonce, json)
-        .map_err(|_| "encryption failed".to_string())?;
+        .map_err(|_| "encrypt-failed".to_string())?;
     let mut out = Vec::with_capacity(EXPORT_MAGIC.len() + SALT_LEN + NONCE_LEN + ct.len());
     out.extend_from_slice(EXPORT_MAGIC);
     out.extend_from_slice(&salt);
@@ -101,14 +101,14 @@ pub fn encrypt_export(passphrase: &str, json: &[u8]) -> Result<Vec<u8>, String> 
 pub fn decrypt_export(passphrase: &str, data: &[u8]) -> Result<Vec<u8>, String> {
     let header = EXPORT_MAGIC.len() + SALT_LEN + NONCE_LEN;
     if data.len() < header || !is_encrypted(data) {
-        return Err("not an encrypted clipon export".into());
+        return Err("not-clipon-export".into());
     }
     let salt = &data[EXPORT_MAGIC.len()..EXPORT_MAGIC.len() + SALT_LEN];
     let nonce = Nonce::from_slice(&data[EXPORT_MAGIC.len() + SALT_LEN..header]);
     let key = derive_export_key(passphrase, salt);
     Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key))
         .decrypt(nonce, &data[header..])
-        .map_err(|_| "wrong passphrase or corrupted file".to_string())
+        .map_err(|_| "wrong-passphrase".to_string())
 }
 
 impl Store {

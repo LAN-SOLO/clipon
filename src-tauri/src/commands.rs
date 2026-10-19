@@ -7,6 +7,43 @@ use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 
+// Errors cross the IPC boundary as stable codes ("code" or "code: detail");
+// the frontend maps them to the UI language (src/errors.ts). Never send
+// translated prose from here.
+const E_UNKNOWN_ITEM: &str = "unknown-item";
+const E_NO_TEXT: &str = "no-text";
+const E_NO_IMAGE: &str = "no-image";
+
+fn io_err(e: impl std::fmt::Display) -> String {
+    format!("io: {e}")
+}
+fn clip_err(e: impl std::fmt::Display) -> String {
+    format!("clipboard: {e}")
+}
+fn img_err(e: impl std::fmt::Display) -> String {
+    format!("image: {e}")
+}
+
+/// Saves the store outside a command (global shortcut, picker): a failure
+/// is reported to the main window as a `save-failed` event.
+pub fn report_persist(app: &AppHandle, st: &AppState) {
+    if let Err(e) = st.persist() {
+        let _ = app.emit("save-failed", e);
+    }
+}
+
+/// Runs heavy work (crypto, image decoding, file IO) on tokio's blocking
+/// pool instead of the IPC/main thread, so the window never freezes.
+async fn blocking<T: Send + 'static>(
+    app: &AppHandle,
+    f: impl FnOnce(&AppHandle) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || f(&app))
+        .await
+        .map_err(|e| format!("internal: {e}"))?
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemDto {
@@ -79,14 +116,16 @@ pub fn get_settings(st: State<'_, AppState>) -> Settings {
 pub fn set_settings(app: AppHandle, st: State<'_, AppState>, new: Settings) -> Result<(), String> {
     let new = new.sanitized();
     let old = st.settings.lock().unwrap().clone();
-    settings::store(&app, &new);
+    let mut errors: Vec<String> = Vec::new();
+    if let Err(e) = settings::store(&app, &new) {
+        errors.push(e);
+    }
     *st.settings.lock().unwrap() = new.clone();
     st.paused.store(new.paused, Ordering::Relaxed);
     sync_pause_menu(&st, new.paused);
 
     // A failing step (autostart, shortcut registration) must not skip the
     // remaining ones — the settings are already stored at this point.
-    let mut errors: Vec<String> = Vec::new();
     if old.autostart != new.autostart {
         use tauri_plugin_autostart::ManagerExt;
         let autolaunch = app.autolaunch();
@@ -96,7 +135,7 @@ pub fn set_settings(app: AppHandle, st: State<'_, AppState>, new: Settings) -> R
             autolaunch.disable()
         };
         if let Err(e) = res {
-            errors.push(e.to_string());
+            errors.push(format!("autostart: {e}"));
         }
     }
     if old.shortcut_toggle != new.shortcut_toggle
@@ -117,7 +156,9 @@ pub fn set_settings(app: AppHandle, st: State<'_, AppState>, new: Settings) -> R
     };
     if shrunk {
         st.delete_blobs(&evicted);
-        st.persist();
+        if let Err(e) = st.persist() {
+            errors.push(e);
+        }
         let _ = app.emit("history-changed", ());
         let _ = app.emit("stack-changed", ());
     }
@@ -129,19 +170,21 @@ pub fn set_settings(app: AppHandle, st: State<'_, AppState>, new: Settings) -> R
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(errors.join(" · "))
+        Err(errors.join(" | "))
     }
 }
 
 #[tauri::command]
-pub fn set_paused(app: AppHandle, st: State<'_, AppState>, paused: bool) {
+pub fn set_paused(app: AppHandle, st: State<'_, AppState>, paused: bool) -> Result<(), String> {
     st.paused.store(paused, Ordering::Relaxed);
     let mut s = st.settings.lock().unwrap();
     s.paused = paused;
-    settings::store(&app, &s);
+    let saved = settings::store(&app, &s);
     drop(s);
     sync_pause_menu(&st, paused);
     let _ = app.emit("paused-changed", paused);
+    // the pause itself is in effect; only remembering it across restarts failed
+    saved
 }
 
 pub fn sync_pause_menu(st: &AppState, paused: bool) {
@@ -152,70 +195,78 @@ pub fn sync_pause_menu(st: &AppState, paused: bool) {
 
 // --- history ---
 
+// Commands without `async` run on the main thread in Tauri 2 — everything
+// that touches the store (persist = encrypt + write), the clipboard or image
+// data is async so a big history never stalls the window.
+
 #[tauri::command]
-pub fn list_items(st: State<'_, AppState>, query: String, filter: Filter) -> Vec<ItemDto> {
+pub async fn list_items(st: State<'_, AppState>, query: String, filter: Filter) -> Result<Vec<ItemDto>, String> {
     let store = st.store.lock().unwrap();
-    store.search(&query, filter).into_iter().map(to_dto).collect()
+    Ok(store.search(&query, filter).into_iter().map(to_dto).collect())
 }
 
 #[tauri::command]
-pub fn get_item_text(st: State<'_, AppState>, id: Uuid) -> Result<String, String> {
+pub async fn get_item_text(st: State<'_, AppState>, id: Uuid) -> Result<String, String> {
     let store = st.store.lock().unwrap();
-    let item = store.get(id).ok_or("unbekanntes Element")?;
-    item.text.clone().ok_or("kein Text".into())
+    let item = store.get(id).ok_or(E_UNKNOWN_ITEM)?;
+    item.text.clone().ok_or_else(|| E_NO_TEXT.into())
 }
 
 /// Returns the image as a base64 PNG data URL, downscaled to `max_dim` if given.
 #[tauri::command]
-pub fn get_item_image(st: State<'_, AppState>, id: Uuid, max_dim: Option<u32>) -> Result<String, String> {
-    let file = {
-        let store = st.store.lock().unwrap();
-        let item = store.get(id).ok_or("unbekanntes Element")?;
-        item.image_file.clone().ok_or("kein Bild")?
-    };
-    let blob = std::fs::read(st.blob_path(&file)?).map_err(|e| e.to_string())?;
-    let png = clipon_core::decrypt(&st.key, &blob)?;
-    let png = match max_dim {
-        Some(max) => {
-            let img = image::load_from_memory(&png).map_err(|e| e.to_string())?;
-            if img.width().max(img.height()) > max {
-                let thumb = img.thumbnail(max, max);
-                let mut out = Vec::new();
-                thumb
-                    .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
-                    .map_err(|e| e.to_string())?;
-                out
-            } else {
-                png
+pub async fn get_item_image(app: AppHandle, id: Uuid, max_dim: Option<u32>) -> Result<String, String> {
+    blocking(&app, move |app| {
+        let st = app.state::<AppState>();
+        let file = {
+            let store = st.store.lock().unwrap();
+            let item = store.get(id).ok_or(E_UNKNOWN_ITEM)?;
+            item.image_file.clone().ok_or(E_NO_IMAGE)?
+        };
+        let blob = clipon_core::read_file(&st.blob_path(&file)?).map_err(io_err)?;
+        let png = clipon_core::decrypt(&st.key, &blob)?;
+        let png = match max_dim {
+            Some(max) => {
+                let img = image::load_from_memory(&png).map_err(img_err)?;
+                if img.width().max(img.height()) > max {
+                    let thumb = img.thumbnail(max, max);
+                    let mut out = Vec::new();
+                    thumb
+                        .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+                        .map_err(img_err)?;
+                    out
+                } else {
+                    png
+                }
             }
-        }
-        None => png,
-    };
-    Ok(format!(
-        "data:image/png;base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(png)
-    ))
+            None => png,
+        };
+        Ok(format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(png)
+        ))
+    })
+    .await
 }
 
 fn write_clipboard_text(st: &AppState, text: &str) -> Result<(), String> {
     *st.last_seen.lock().unwrap() = Some(clipon_core::fnv1a(text.as_bytes()));
-    let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-    cb.set_text(text.to_string()).map_err(|e| e.to_string())
+    let mut cb = arboard::Clipboard::new().map_err(clip_err)?;
+    cb.set_text(text.to_string()).map_err(clip_err)
 }
 
 fn copy_to_clipboard(st: &AppState, id: Uuid) -> Result<(), String> {
     let (kind, text, image_file) = {
         let store = st.store.lock().unwrap();
-        let item = store.get(id).ok_or("unbekanntes Element")?;
+        let item = store.get(id).ok_or(E_UNKNOWN_ITEM)?;
         (item.kind, item.text.clone(), item.image_file.clone())
     };
     match kind {
-        ItemKind::Text => write_clipboard_text(st, &text.ok_or("kein Text")?),
+        ItemKind::Text => write_clipboard_text(st, &text.ok_or(E_NO_TEXT)?),
         ItemKind::Image => {
-            let file = image_file.ok_or("kein Bild")?;
-            let blob = std::fs::read(st.blob_path(&file)?).map_err(|e| e.to_string())?;
+            let file = image_file.ok_or(E_NO_IMAGE)?;
+            let blob = clipon_core::read_file(&st.blob_path(&file)?).map_err(io_err)?;
             let png = clipon_core::decrypt(&st.key, &blob)?;
-            let img = image::load_from_memory(&png).map_err(|e| e.to_string())?.to_rgba8();
+            let img = image::load_from_memory(&png).map_err(img_err)?.to_rgba8();
             let (w, h) = img.dimensions();
             let data = arboard::ImageData {
                 width: w as usize,
@@ -223,26 +274,30 @@ fn copy_to_clipboard(st: &AppState, id: Uuid) -> Result<(), String> {
                 bytes: std::borrow::Cow::Owned(img.into_raw()),
             };
             *st.last_seen.lock().unwrap() = Some(crate::watcher::image_hash(&data));
-            let mut cb = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-            cb.set_image(data).map_err(|e| e.to_string())
+            let mut cb = arboard::Clipboard::new().map_err(clip_err)?;
+            cb.set_image(data).map_err(clip_err)
         }
     }
 }
 
 #[tauri::command]
-pub fn copy_item(app: AppHandle, st: State<'_, AppState>, id: Uuid) -> Result<(), String> {
-    copy_to_clipboard(&st, id)?;
-    st.store.lock().unwrap().touch(id);
-    st.persist();
-    let _ = app.emit("history-changed", ());
-    Ok(())
+pub async fn copy_item(app: AppHandle, id: Uuid) -> Result<(), String> {
+    blocking(&app, move |app| {
+        let st = app.state::<AppState>();
+        copy_to_clipboard(&st, id)?;
+        st.store.lock().unwrap().touch(id);
+        let saved = st.persist();
+        let _ = app.emit("history-changed", ());
+        saved
+    })
+    .await
 }
 
 /// Shared sink for derived text (color formats, transforms, merges): new
 /// history entry + clipboard.
 fn add_text_and_copy(app: &AppHandle, st: &AppState, text: &str) -> Result<(), String> {
     if text.trim().is_empty() {
-        return Err("leerer Text".into());
+        return Err("empty-text".into());
     }
     write_clipboard_text(st, text)?;
     let limit = st.settings.lock().unwrap().history_limit as usize;
@@ -252,23 +307,23 @@ fn add_text_and_copy(app: &AppHandle, st: &AppState, text: &str) -> Result<(), S
         store.enforce_limit(limit.max(1))
     };
     st.delete_blobs(&evicted);
-    st.persist();
+    let saved = st.persist();
     let _ = app.emit("history-changed", ());
     // limit eviction may have taken stack entries along (text items leave
     // no blob behind, so `evicted` alone cannot tell)
     let _ = app.emit("stack-changed", ());
-    Ok(())
+    saved
 }
 
 /// Adds text to the history and puts it on the clipboard — used by the color
 /// picker and the format-conversion buttons in the detail pane.
 #[tauri::command]
-pub fn add_text_item(app: AppHandle, st: State<'_, AppState>, text: String) -> Result<(), String> {
+pub async fn add_text_item(app: AppHandle, st: State<'_, AppState>, text: String) -> Result<(), String> {
     add_text_and_copy(&app, &st, &text)
 }
 
 #[tauri::command]
-pub fn transform_item(
+pub async fn transform_item(
     app: AppHandle,
     st: State<'_, AppState>,
     id: Uuid,
@@ -276,8 +331,8 @@ pub fn transform_item(
 ) -> Result<(), String> {
     let text = {
         let store = st.store.lock().unwrap();
-        let item = store.get(id).ok_or("unbekanntes Element")?;
-        item.text.clone().ok_or("kein Text")?
+        let item = store.get(id).ok_or(E_UNKNOWN_ITEM)?;
+        item.text.clone().ok_or(E_NO_TEXT)?
     };
     let out = clipon_core::transform::apply(op, &text)?;
     add_text_and_copy(&app, &st, &out)
@@ -285,13 +340,13 @@ pub fn transform_item(
 
 /// Joins the text of all stack items into one new entry (stack stays intact).
 #[tauri::command]
-pub fn merge_stack(app: AppHandle, st: State<'_, AppState>) -> Result<(), String> {
+pub async fn merge_stack(app: AppHandle, st: State<'_, AppState>) -> Result<(), String> {
     let text = st
         .store
         .lock()
         .unwrap()
         .stack_merged_text("\n")
-        .ok_or("kein Text im Stack")?;
+        .ok_or("stack-no-text")?;
     add_text_and_copy(&app, &st, &text)
 }
 
@@ -315,22 +370,26 @@ fn with_allowed_extension(path: &str, allowed: &[&str]) -> std::path::PathBuf {
 
 /// Writes one item to disk: `.txt` for text, `.png` for images.
 #[tauri::command]
-pub fn export_item(st: State<'_, AppState>, id: Uuid, path: String) -> Result<(), String> {
-    let (text, image_file) = {
-        let store = st.store.lock().unwrap();
-        let item = store.get(id).ok_or("unbekanntes Element")?;
-        (item.text.clone(), item.image_file.clone())
-    };
-    let path = with_allowed_extension(&path, if text.is_some() { &["txt"] } else { &["png"] });
-    let bytes = match (text, image_file) {
-        (Some(t), _) => t.into_bytes(),
-        (None, Some(f)) => {
-            let blob = std::fs::read(st.blob_path(&f)?).map_err(|e| e.to_string())?;
-            clipon_core::decrypt(&st.key, &blob)?
-        }
-        _ => return Err("leeres Element".into()),
-    };
-    std::fs::write(&path, bytes).map_err(|e| e.to_string())
+pub async fn export_item(app: AppHandle, id: Uuid, path: String) -> Result<(), String> {
+    blocking(&app, move |app| {
+        let st = app.state::<AppState>();
+        let (text, image_file) = {
+            let store = st.store.lock().unwrap();
+            let item = store.get(id).ok_or(E_UNKNOWN_ITEM)?;
+            (item.text.clone(), item.image_file.clone())
+        };
+        let path = with_allowed_extension(&path, if text.is_some() { &["txt"] } else { &["png"] });
+        let bytes = match (text, image_file) {
+            (Some(t), _) => t.into_bytes(),
+            (None, Some(f)) => {
+                let blob = clipon_core::read_file(&st.blob_path(&f)?).map_err(io_err)?;
+                clipon_core::decrypt(&st.key, &blob)?
+            }
+            _ => return Err("empty-item".into()),
+        };
+        write_atomic(&path, &bytes)
+    })
+    .await
 }
 
 fn write_atomic(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
@@ -339,10 +398,11 @@ fn write_atomic(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(".clipon-part");
     let tmp = std::path::PathBuf::from(tmp);
-    std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, path).map_err(|e| {
+    std::fs::write(&tmp, data).map_err(io_err)?;
+    // Windows: the target may be open briefly (scanner, OneDrive) — retry
+    clipon_core::replace_file(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
-        e.to_string()
+        io_err(e)
     })
 }
 
@@ -350,50 +410,47 @@ fn write_atomic(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
 const MAX_IMPORT_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// Backup of history and/or snippets; encrypted with a passphrase if given.
-/// Async because the key derivation takes a moment — all locks are released
-/// before it runs.
+/// The key derivation (PBKDF2, 600k rounds), image decryption and the file
+/// write run on the blocking pool.
 #[tauri::command]
 pub async fn export_data(
-    st: State<'_, AppState>,
+    app: AppHandle,
     path: String,
     include_history: bool,
     include_snippets: bool,
     passphrase: Option<String>,
 ) -> Result<(), String> {
-    let b64 = base64::engine::general_purpose::STANDARD;
-    let bundle = {
-        let store = st.store.lock().unwrap();
-        store.to_bundle(include_history, include_snippets, |file| {
-            let blob = std::fs::read(st.blob_path(file).ok()?).ok()?;
-            let png = clipon_core::decrypt(&st.key, &blob).ok()?;
-            Some(b64.encode(png))
-        })
-    };
-    let passphrase = passphrase.filter(|p| !p.is_empty());
-    let data = match passphrase {
-        Some(p) => {
-            let json = serde_json::to_vec(&bundle).map_err(|e| e.to_string())?;
-            clipon_core::export::encrypt_export(&p, &json)?
-        }
-        None => serde_json::to_vec_pretty(&bundle).map_err(|e| e.to_string())?,
-    };
-    write_atomic(&with_allowed_extension(&path, &["json", "clipon-backup"]), &data)
+    blocking(&app, move |app| {
+        let st = app.state::<AppState>();
+        let b64 = base64::engine::general_purpose::STANDARD;
+        let bundle = {
+            let store = st.store.lock().unwrap();
+            store.to_bundle(include_history, include_snippets, |file| {
+                let blob = clipon_core::read_file(&st.blob_path(file).ok()?).ok()?;
+                let png = clipon_core::decrypt(&st.key, &blob).ok()?;
+                Some(b64.encode(png))
+            })
+        };
+        let passphrase = passphrase.filter(|p| !p.is_empty());
+        let data = match passphrase {
+            Some(p) => {
+                let json = serde_json::to_vec(&bundle).map_err(|e| e.to_string())?;
+                clipon_core::export::encrypt_export(&p, &json)?
+            }
+            None => serde_json::to_vec_pretty(&bundle).map_err(|e| e.to_string())?,
+        };
+        write_atomic(&with_allowed_extension(&path, &["json", "clipon-backup"]), &data)
+    })
+    .await
 }
 
-#[tauri::command]
-pub async fn import_data(
-    app: AppHandle,
-    st: State<'_, AppState>,
-    path: String,
+/// Parses an import file: optional passphrase decryption, then JSON (a UTF-8
+/// BOM from Windows editors is accepted).
+fn parse_import(
+    data: Vec<u8>,
     passphrase: Option<String>,
-) -> Result<clipon_core::export::ImportStats, String> {
+) -> Result<clipon_core::export::ExportBundle, String> {
     use clipon_core::export;
-    let b64 = base64::engine::general_purpose::STANDARD;
-    let size = std::fs::metadata(&path).map_err(|e| e.to_string())?.len();
-    if size > MAX_IMPORT_BYTES {
-        return Err("Datei zu groß für einen clipon-Import (max. 1 GB)".into());
-    }
-    let data = std::fs::read(&path).map_err(|e| e.to_string())?;
     let json = if export::is_encrypted(&data) {
         let p = passphrase
             .filter(|p| !p.is_empty())
@@ -402,56 +459,77 @@ pub async fn import_data(
     } else {
         data
     };
-    let bundle: export::ExportBundle =
-        serde_json::from_slice(&json).map_err(|e| format!("keine clipon-Exportdatei: {e}"))?;
-    let limit = st.settings.lock().unwrap().history_limit as usize;
-    let (stats, evicted) = {
-        let mut store = st.store.lock().unwrap();
-        let stats = store.merge_bundle(bundle, |png_b64| {
-            let png = b64.decode(png_b64).ok()?;
-            image::load_from_memory(&png).ok()?;
-            let blob = clipon_core::encrypt(&st.key, &png).ok()?;
-            let name = format!("{}.bin", Uuid::new_v4());
-            std::fs::write(st.blobs_dir().join(&name), blob).ok()?;
-            Some(name)
-        });
-        (stats, store.enforce_limit(limit.max(1)))
-    };
-    st.delete_blobs(&evicted);
-    st.persist();
-    let _ = app.emit("history-changed", ());
-    let _ = app.emit("stack-changed", ());
-    let _ = app.emit("snippets-changed", ());
-    Ok(stats)
+    serde_json::from_slice(clipon_core::strip_bom(&json)).map_err(|e| format!("not-clipon-export: {e}"))
 }
 
 #[tauri::command]
-pub fn pin_item(app: AppHandle, st: State<'_, AppState>, id: Uuid, pinned: bool) {
+pub async fn import_data(
+    app: AppHandle,
+    path: String,
+    passphrase: Option<String>,
+) -> Result<clipon_core::export::ImportStats, String> {
+    blocking(&app, move |app| {
+        let st = app.state::<AppState>();
+        let b64 = base64::engine::general_purpose::STANDARD;
+        let size = std::fs::metadata(&path).map_err(io_err)?.len();
+        if size > MAX_IMPORT_BYTES {
+            return Err("import-too-large".into());
+        }
+        let data = clipon_core::read_file(std::path::Path::new(&path)).map_err(io_err)?;
+        let bundle = parse_import(data, passphrase)?;
+        let limit = st.settings.lock().unwrap().history_limit as usize;
+        let (stats, evicted) = {
+            let mut store = st.store.lock().unwrap();
+            let stats = store.merge_bundle(bundle, |png_b64| {
+                let png = b64.decode(png_b64).ok()?;
+                image::load_from_memory(&png).ok()?;
+                let blob = clipon_core::encrypt(&st.key, &png).ok()?;
+                let name = format!("{}.bin", Uuid::new_v4());
+                std::fs::write(st.blobs_dir().join(&name), blob).ok()?;
+                Some(name)
+            });
+            (stats, store.enforce_limit(limit.max(1)))
+        };
+        st.delete_blobs(&evicted);
+        let saved = st.persist();
+        let _ = app.emit("history-changed", ());
+        let _ = app.emit("stack-changed", ());
+        let _ = app.emit("snippets-changed", ());
+        saved.map(|_| stats)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn pin_item(app: AppHandle, st: State<'_, AppState>, id: Uuid, pinned: bool) -> Result<(), String> {
     st.store.lock().unwrap().set_pinned(id, pinned);
-    st.persist();
+    let saved = st.persist();
     let _ = app.emit("history-changed", ());
+    saved
 }
 
 #[tauri::command]
-pub fn delete_item(app: AppHandle, st: State<'_, AppState>, id: Uuid) {
+pub async fn delete_item(app: AppHandle, st: State<'_, AppState>, id: Uuid) -> Result<(), String> {
     let removed = st.store.lock().unwrap().delete(id);
     if let Some(f) = removed {
         st.delete_blobs(&[f]);
     }
-    st.persist();
+    let saved = st.persist();
     let _ = app.emit("history-changed", ());
     // the item may have been on the paste stack, too
     let _ = app.emit("stack-changed", ());
+    saved
 }
 
 #[tauri::command]
-pub fn clear_history(app: AppHandle, st: State<'_, AppState>) {
+pub async fn clear_history(app: AppHandle, st: State<'_, AppState>) -> Result<(), String> {
     let keep_pinned = st.settings.lock().unwrap().keep_pinned_on_clear;
     let files = st.store.lock().unwrap().clear(keep_pinned);
     st.delete_blobs(&files);
-    st.persist();
+    let saved = st.persist();
     let _ = app.emit("history-changed", ());
     let _ = app.emit("stack-changed", ());
+    saved
 }
 
 // --- snippets ---
@@ -472,28 +550,30 @@ pub fn list_snippets(st: State<'_, AppState>) -> Vec<SnippetDto> {
 }
 
 #[tauri::command]
-pub fn save_snippet(
+pub async fn save_snippet(
     st: State<'_, AppState>,
     id: Option<Uuid>,
     name: String,
     text: String,
 ) -> Result<Uuid, String> {
     if name.trim().is_empty() {
-        return Err("Name fehlt".into());
+        return Err("snippet-name-missing".into());
     }
     let id = st.store.lock().unwrap().save_snippet(id, name.trim(), &text);
-    st.persist();
-    Ok(id)
+    let saved = st.persist();
+    saved.map(|_| id)
 }
 
 #[tauri::command]
-pub fn delete_snippet(st: State<'_, AppState>, id: Uuid) {
+pub async fn delete_snippet(app: AppHandle, st: State<'_, AppState>, id: Uuid) -> Result<(), String> {
     st.store.lock().unwrap().delete_snippet(id);
-    st.persist();
+    let saved = st.persist();
+    let _ = app.emit("snippets-changed", ());
+    saved
 }
 
 #[tauri::command]
-pub fn copy_snippet(st: State<'_, AppState>, id: Uuid) -> Result<(), String> {
+pub async fn copy_snippet(st: State<'_, AppState>, id: Uuid) -> Result<(), String> {
     let text = {
         let store = st.store.lock().unwrap();
         store
@@ -501,7 +581,7 @@ pub fn copy_snippet(st: State<'_, AppState>, id: Uuid) -> Result<(), String> {
             .iter()
             .find(|s| s.id == id)
             .map(|s| s.text.clone())
-            .ok_or("unbekanntes Snippet")?
+            .ok_or("unknown-snippet")?
     };
     // placeholders see the clipboard as it is *before* the snippet lands there
     let text = if text.contains('{') {
@@ -529,54 +609,58 @@ pub fn stack_list(st: State<'_, AppState>) -> Vec<ItemDto> {
 }
 
 #[tauri::command]
-pub fn stack_add(app: AppHandle, st: State<'_, AppState>, id: Uuid) {
+pub async fn stack_add(app: AppHandle, st: State<'_, AppState>, id: Uuid) -> Result<(), String> {
     st.store.lock().unwrap().stack_push(id);
-    st.persist();
+    let saved = st.persist();
     let _ = app.emit("stack-changed", ());
+    saved
 }
 
 #[tauri::command]
-pub fn stack_remove(app: AppHandle, st: State<'_, AppState>, id: Uuid) {
+pub async fn stack_remove(app: AppHandle, st: State<'_, AppState>, id: Uuid) -> Result<(), String> {
     st.store.lock().unwrap().stack_remove(id);
-    st.persist();
+    let saved = st.persist();
     let _ = app.emit("stack-changed", ());
+    saved
 }
 
 #[tauri::command]
-pub fn stack_clear(app: AppHandle, st: State<'_, AppState>) {
+pub async fn stack_clear(app: AppHandle, st: State<'_, AppState>) -> Result<(), String> {
     st.store.lock().unwrap().stack_clear();
-    st.persist();
+    let saved = st.persist();
     let _ = app.emit("stack-changed", ());
+    saved
 }
 
 /// Copies the next stack item to the clipboard and removes it from the stack.
 #[tauri::command]
-pub fn stack_pop_copy(app: AppHandle, st: State<'_, AppState>) -> Result<Option<ItemDto>, String> {
-    let id = {
-        let mut store = st.store.lock().unwrap();
-        store.stack_pop()
-    };
-    let Some(id) = id else { return Ok(None) };
+pub async fn stack_pop_copy(app: AppHandle, st: State<'_, AppState>) -> Result<Option<ItemDto>, String> {
+    // copy first, pop after: a failing clipboard must not lose the entry
+    let Some(id) = st.store.lock().unwrap().stack_peek() else { return Ok(None) };
     copy_to_clipboard(&st, id)?;
+    st.store.lock().unwrap().stack_remove(id);
     let dto = {
         let mut store = st.store.lock().unwrap();
         store.touch(id);
         store.get(id).map(to_dto)
     };
-    st.persist();
+    let saved = st.persist();
     let _ = app.emit("stack-changed", ());
     let _ = app.emit("history-changed", ());
-    Ok(dto)
+    saved.map(|_| dto)
 }
 
 /// Shortcut path for the global hotkey: pop + copy without the command plumbing.
 pub fn do_stack_pop(app: &AppHandle) {
     let st = app.state::<AppState>();
-    let id = st.store.lock().unwrap().stack_pop();
+    let id = st.store.lock().unwrap().stack_peek();
     if let Some(id) = id {
         if copy_to_clipboard(&st, id).is_ok() {
-            st.store.lock().unwrap().touch(id);
-            st.persist();
+            let mut store = st.store.lock().unwrap();
+            store.stack_remove(id);
+            store.touch(id);
+            drop(store);
+            report_persist(app, &st);
             let _ = app.emit("stack-changed", ());
             let _ = app.emit("history-changed", ());
         }
@@ -686,7 +770,7 @@ pub fn hide_picker(app: AppHandle) {
 pub async fn picker_paste(app: AppHandle, st: State<'_, AppState>, id: Uuid) -> Result<bool, String> {
     copy_to_clipboard(&st, id)?;
     st.store.lock().unwrap().touch(id);
-    st.persist();
+    report_persist(&app, &st);
     let _ = app.emit("history-changed", ());
 
     // Windows: hand the focus back *before* hiding — only the foreground
@@ -761,7 +845,7 @@ pub struct UpdateInfoDto {
 #[tauri::command]
 pub async fn check_update(app: AppHandle) -> Result<Option<UpdateInfoDto>, String> {
     use tauri_plugin_updater::UpdaterExt;
-    let updater = app.updater().map_err(|e| e.to_string())?;
+    let updater = app.updater().map_err(|e| format!("update-check-failed: {e}"))?;
     match updater.check().await {
         Ok(Some(update)) => Ok(Some(UpdateInfoDto {
             version: update.version.clone(),
@@ -769,30 +853,89 @@ pub async fn check_update(app: AppHandle) -> Result<Option<UpdateInfoDto>, Strin
             date: update.date.map(|d| d.to_string()),
         })),
         Ok(None) => Ok(None),
-        Err(e) => Err(format!("Update-Prüfung fehlgeschlagen: {e}")),
+        Err(e) => Err(format!("update-check-failed: {e}")),
     }
 }
 
 #[tauri::command]
 pub async fn install_update(app: AppHandle) -> Result<(), String> {
     use tauri_plugin_updater::UpdaterExt;
-    let updater = app.updater().map_err(|e| e.to_string())?;
+    let updater = app.updater().map_err(|e| format!("update-check-failed: {e}"))?;
     let update = updater
         .check()
         .await
-        .map_err(|e| format!("Update-Prüfung fehlgeschlagen: {e}"))?
-        .ok_or("Kein Update verfügbar")?;
+        .map_err(|e| format!("update-check-failed: {e}"))?
+        .ok_or("no-update")?;
     update
         .download_and_install(|_, _| {}, || {})
         .await
-        .map_err(|e| format!("Update fehlgeschlagen: {e}"))?;
+        .map_err(|e| format!("update-failed: {e}"))?;
     app.restart();
 }
 
 #[cfg(test)]
 mod tests {
-    use super::with_allowed_extension;
+    use super::{parse_import, with_allowed_extension};
     use std::path::PathBuf;
+
+    fn sample_json() -> Vec<u8> {
+        let mut store = clipon_core::Store::default();
+        store.add_text("hallo");
+        let bundle = store.to_bundle(true, true, |_| None);
+        serde_json::to_vec(&bundle).unwrap()
+    }
+
+    /// Every error code the backend sends must have a DE and an EN text in
+    /// src/i18n.ts (`errors` map), or the UI would show the raw code.
+    #[test]
+    fn every_error_code_is_translated() {
+        const CODES: &[&str] = &[
+            "unknown-item", "unknown-snippet", "no-text", "no-image", "empty-text", "empty-item",
+            "stack-no-text", "snippet-name-missing", "import-too-large", "not-clipon-export",
+            "passphrase-required", "wrong-passphrase", "encrypt-failed", "decrypt-failed",
+            "not-clipon-file", "invalid-blob", "invalid-json", "url-malformed", "url-not-utf8",
+            "update-check-failed", "update-failed", "no-update", "io", "clipboard", "image",
+            "internal", "save-failed", "autostart",
+        ];
+        let i18n = include_str!("../../src/i18n.ts");
+        let split = i18n.find("const en").expect("en dict");
+        let (de, en) = i18n.split_at(split);
+        for code in CODES {
+            let key = if code.contains('-') { format!("'{code}':") } else { format!("{code}:") };
+            assert!(de.contains(&key), "DE text missing for error code {code}");
+            assert!(en.contains(&key), "EN text missing for error code {code}");
+        }
+        // and the sources really use these spellings
+        let sources = [
+            include_str!("commands.rs"),
+            include_str!("state.rs"),
+            include_str!("../../core/src/lib.rs"),
+            include_str!("../../core/src/export.rs"),
+            include_str!("../../core/src/transform.rs"),
+        ]
+        .concat();
+        for code in CODES.iter().filter(|c| c.contains('-')) {
+            assert!(sources.contains(&format!("\"{code}")), "code {code} not used by the backend");
+        }
+    }
+
+    #[test]
+    fn import_accepts_utf8_bom_and_reports_codes() {
+        // Windows Notepad saves JSON as UTF-8 with BOM
+        let mut with_bom = b"\xEF\xBB\xBF".to_vec();
+        with_bom.extend(sample_json());
+        assert_eq!(parse_import(with_bom, None).unwrap().items.len(), 1);
+        assert_eq!(parse_import(sample_json(), None).unwrap().items.len(), 1);
+
+        // errors are stable codes for the frontend's i18n mapping
+        let e = parse_import(b"no json".to_vec(), None).unwrap_err();
+        assert!(e.starts_with("not-clipon-export"), "{e}");
+        let enc = clipon_core::export::encrypt_export("geheim", &sample_json()).unwrap();
+        assert_eq!(parse_import(enc.clone(), None).unwrap_err(), "passphrase-required");
+        assert_eq!(parse_import(enc.clone(), Some(String::new())).unwrap_err(), "passphrase-required");
+        assert_eq!(parse_import(enc.clone(), Some("falsch".into())).unwrap_err(), "wrong-passphrase");
+        assert_eq!(parse_import(enc, Some("geheim".into())).unwrap().items.len(), 1);
+    }
 
     #[test]
     fn export_paths_keep_or_get_the_expected_extension() {

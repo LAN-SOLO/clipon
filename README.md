@@ -9,13 +9,13 @@ Clipboard-Manager: Verlauf, Snippets und Paste-Stack — lokal, verschlüsselt, 
 - **Bilder & Dateien:** auch im Finder kopierte Bilddateien landen als Bild im
   Verlauf (Suche per Dateiname); andere Dateien als Pfad-Eintrag.
 - **Paste-Stack:** Einträge einsammeln, der Reihe nach zurückholen
-  (`Cmd+Shift+B`), z. B. für Formulare.
+  (`Cmd/Strg+Shift+B`), z. B. für Formulare.
 - **Snippets:** Textbausteine, ein Klick — kopiert.
 - **Hilfe eingebaut:** First-Run-Tutorial, interaktive UI-Tour und
   durchsuchbares Handbuch (DE/EN).
 - **Privat by design:** Verlauf AES-256-GCM-verschlüsselt auf der Platte,
   Schlüssel im System-Schlüsselbund. Kein Netzwerkzugriff außer Update-Check.
-- **Quick-Picker** (`Cmd/Ctrl+Shift+Space`): Suchfenster am Mauszeiger, fügt
+- **Quick-Picker** (`Cmd/Strg+Shift+Space`): Suchfenster am Mauszeiger, fügt
   direkt in die vorherige App ein (macOS mit Bedienungshilfen-Freigabe,
   Windows ohne Freigabe).
 - **Passwort-Manager werden übersprungen:** macOS `org.nspasteboard.ConcealedType`
@@ -26,9 +26,12 @@ Clipboard-Manager: Verlauf, Snippets und Paste-Stack — lokal, verschlüsselt, 
   Backup-Export/-Import (optional mit Passphrase verschlüsselt).
 - Tray, globale Shortcuts, Autostart, DE/EN, Hell/Dunkel, signierte In-App-Updates.
 - Läuft nur einmal pro Benutzer; ein zweiter Start holt das Fenster nach vorn.
+- Fehler erscheinen immer in der UI-Sprache (das Backend liefert nur Codes,
+  `src/errors.ts` übersetzt); Kürzel stehen da, wie sie auf der Tastatur
+  heißen (⌘ auf dem Mac, Strg/Ctrl unter Windows).
 
-Version 1.0.0 — Audit-Stand, bekannte Grenzen und manuelle Testliste:
-`AUDIT-1.0.md`.
+Version 1.0.0 — Audit-Stand (Runde 1 + 2), bekannte Grenzen und manuelle
+Testliste: `AUDIT-1.0.md`.
 
 ## Entwicklung
 

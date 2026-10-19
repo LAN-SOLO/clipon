@@ -206,3 +206,64 @@ Alles aus Abschnitt 6, zusätzlich:
 
 Hinweis: Strg+Shift+V ist unter Windows in vielen Programmen „Als Nur-Text einfügen“; als
 globales Kürzel überdeckt clipon das systemweit. Im Kürzel-Editor änderbar, Standard unverändert.
+
+## Runde 2 (2026-10-20)
+
+Basis `6c3cae1` (= origin/main, Stand der 1.0.0-Test-Builds). Gezielte Suche nach den
+Fehlermustern L1–L13 aus Runde 1 der anderen Apps, plus die Restpunkte dieser App.
+
+### Behoben
+
+| Muster | Befund | Fix |
+|---|---|---|
+| L2 | Backend-Fehler kamen als deutsche Prosa („unbekanntes Element“, „Update-Prüfung fehlgeschlagen …“, „Datei zu groß …“) bzw. englische Library-Texte („wrong passphrase or corrupted file“, „invalid JSON“) roh in die UI — in der englischen Oberfläche deutsch und umgekehrt | Backend liefert nur noch stabile Codes (`code` / `code: Detail`, mehrere mit ` \| `), `src/errors.ts` übersetzt sie (DE+EN), auch verschachtelt (`save-failed: io: …`); Kürzel-Fehler nennen das Kürzel in Plattform-Schreibweise. Test `every_error_code_is_translated` prüft, dass jeder Code in beiden Sprachen in `i18n.ts` steht |
+| L11 | Viele Aktionen schluckten Fehler: Kopieren, Pin, In den Stack, Löschen, Stack entfernen/leeren, „Nächsten kopieren“ (gar kein `catch` → unbehandelte Promise), Pause, Farbwähler, Update-Installation, Picker-Einfügen; „Zusammenführen“ meldete bei *jedem* Fehler „keine Text-Einträge“ | Jeder Fehler erscheint als Toast (5 s) bzw. im Picker-Fuß, in der UI-Sprache |
+| L11 | Speichern des Verlaufs (`persist`) und der Einstellungen scheiterte still (nur `eprintln`) — voller Datenträger oder gesperrte Datei blieb unbemerkt | `persist()`/`settings::store()` liefern `Result`; Befehle geben den Fehler zurück, Watcher/Tray/globale Kürzel senden `save-failed` → Toast „Änderung konnte nicht gespeichert werden“ |
+| L11 | Snippet löschen ohne Rückfrage (Zeilen-Symbol und Backspace-Kürzel) — selbst getippter Text sofort weg | Native Rückfrage über `confirm()` aus `@tauri-apps/plugin-dialog` (Löschen/Abbrechen) |
+| L8 | Fast alle Befehle liefen synchron auf dem Haupt-/IPC-Thread: Entschlüsseln + Skalieren von Bildern (`get_item_image`), Bild in die Zwischenablage, Einzel-Export, Backup-Export inkl. PBKDF2 600k, Import inkl. Bild-Neuverschlüsselung, jedes `persist` (AES über den ganzen Verlauf) → Fenster friert bei großem Verlauf/großen Bildern ein | Schwere Befehle laufen per `spawn_blocking`, die übrigen Store-Befehle sind `async` (Tokio-Worker statt Haupt-Thread) |
+| L9 | Export/Import ließ sich während eines laufenden Exports/Imports erneut starten | Knöpfe während des Laufs gesperrt, Hinweis „Läuft …“ |
+| L9 | „Nächsten kopieren“ entfernte den Eintrag *vor* dem Kopieren aus dem Stack — scheiterte die Zwischenablage, war er weg | erst kopieren, dann entfernen (Befehl und globales Kürzel) |
+| L5 | `rename` beim Speichern von Verlauf, Einstellungen und Exporten ohne Wiederholung — Virenscanner/OneDrive/Indexer halten die Datei unter Windows kurz offen (ERROR_SHARING_VIOLATION/ACCESS_DENIED/LOCK_VIOLATION) | `replace_file`/`read_file` mit bis zu 8 Wiederholungen (25–200 ms), Temp-Datei wird bei Fehlschlag entfernt; Test mit simuliertem Lock |
+| L5 | Vorgeschlagener Export-Dateiname aus der Vorschau konnte ein reservierter Windows-Name sein (Eintrag „con“ → `con.txt`) | `exportBaseName`: reservierte Namen (CON, PRN, AUX, NUL, COM1–9, LPT1–9) bekommen `clipon-` davor |
+| L4 | Import lehnte JSON mit UTF-8-BOM ab (Windows-Editor speichert so) | BOM wird entfernt; Test `import_accepts_utf8_bom_and_reports_codes` |
+| L6 | Kürzel überall als „Ctrl+…“, auch in der deutschen Oberfläche; Hinweis „⌘/Ctrl oder Alt“ auf jeder Plattform; Handbuch DE mit „Ctrl“ | `formatCombo(combo, lang)`: macOS ⌘⇧V, Windows/Linux „Strg+Shift+V“ (DE) bzw. „Ctrl+Shift+V“ (EN); Hinweis plattformgerecht; Handbuch DE „Cmd/Strg“ |
+| L10 | Vorgeschlagener Backup-Name nutzte das UTC-Datum (`toISOString`) — kurz nach Mitternacht in Europa der Vortag | lokales Datum |
+| L7 | Farbfeld nutzte den Rohtext als `style.background`; `rgb(0 0 0) url(…)` galt als Farbe | Erkennung lässt in `rgb()/hsl()` nur Zahlen, Einheiten und Trenner zu (Core-Test), Farbfeld zeigt nur den geparsten Wert als `rgba()` neu serialisiert (CSP blockte externe Bilder ohnehin) |
+| L13 | Update-Fehler ohne Grund („Update-Prüfung fehlgeschlagen“), Installationsfehler im Banner still | Fehler mit Grund in der UI-Sprache, in Einstellungen und Banner |
+| Abh. | `cargo audit`: rustls 0.23.43 mit 4 Advisories (RUSTSEC-2026-0285/-0346/-0348/-0349) | `cargo update -p rustls` → 0.23.46 (Patch, nur Lockfile) |
+
+### Geprüft, ohne Befund
+
+- **L1:** kein `window.confirm/alert/prompt` mehr; „Verlauf leeren“ und „Snippet löschen“ über `confirm()` des Plugins (Capability `dialog:allow-message`, Plugin 2.7.2 ruft `plugin:dialog|message`). Die Harness bildet das echte Plugin nach (`window.confirm` wirft).
+- **L3:** Sprache beim Erststart kommt aus der System-UI-Sprache (macOS `NSLocale`, Windows `GetUserDefaultUILanguage`), nicht aus `LANG`.
+- **L12:** alle neuen Texte DE+EN; Handbuch (Verlauf, Snippets, Export & Import, Farben, Kürzel) beschreibt das neue Verhalten.
+- **L13:** Updater-Endpoint `https://github.com/LAN-SOLO/clipon/releases/latest/download/latest.json`, Minisign-Pubkey gesetzt, Versionsvergleich semver über das Plugin (1.0.0 → 1.0.x).
+- CSV gibt es in clipon nicht (L4-Export entfällt).
+
+### Bewusst offen
+
+- `cargo audit`: `zip` 4.6.1 (RUSTSEC-2026-0367/-0368/-0369, Fix erst in 9.x) kommt nur über `tauri-plugin-updater` 2.10.1 und nur unter Windows; die Lücken betreffen SUID-Bits/Symlinks beim Entpacken (Unix) und das Update-Paket wird erst nach der Minisign-Prüfung entpackt. Ein Update des Updater-Plugins (2.12) wäre ein Minor-Sprung mitten in den 1.0-Tests — nicht gemacht. Übrige Meldungen sind „unmaintained“/„unsound“-Warnungen in GTK/Linux-Abhängigkeiten von Tauri.
+- Schlüssel/Passphrasen werden nicht genullt (`zeroize` wäre neue Abhängigkeit).
+- Fehler-Details (Text in Klammern) stammen vom Betriebssystem bzw. von Bibliotheken und bleiben in deren Sprache (Windows liefert sie in der Systemsprache).
+
+### Tests Runde 2
+
+| Prüfung | Ergebnis |
+|---|---|
+| `cargo test --workspace` | 30 Core + 8 App = 38 grün (neu: Lock-Wiederholung, BOM, Store ersetzen, Farb-Härtung, Import-Codes, Übersetzungs-Vollständigkeit) |
+| `pnpm build` (tsc + vite) | fehlerfrei |
+| `cargo clippy --workspace --tests` | nur die bekannten `sort_by_key`-Hinweise |
+| Windows-Cross-Typecheck (`x86_64-pc-windows-msvc`, Stub-Header, kein Link) | fehlerfrei, 0 Warnungen |
+| `cargo audit` | rustls behoben; zip offen (s. o.) |
+| UI-Harness (headless Chromium, gemocktes IPC, Dialog-Plugin wie echt) | 31 Szenarien Runde 1 + 13 neue (Fehler-Toasts DE/EN, Snippet-Rückfrage Abbrechen/Löschen, `save-failed`-Event, Kürzel-/Autostart-Fehler, Export-Sperre + lokales Datum, Import-/Update-Fehler, Farbfeld, Stack-Pop-Fehler, Picker-Fehler) + 3 mit Windows-Plattform (Strg/Ctrl) — alle bestanden, 0 Konsolenfehler |
+| Layout 780×520 (Mindestgröße) DE/EN × Dunkel/Hell, Picker 560×420 | kein horizontaler Überlauf, keine abgeschnittenen Knöpfe in Verlauf, Farben, Stack, Snippets, Einstellungen, Hilfe; Screenshots gesichtet |
+
+### Nur am echten Gerät prüfbar (zusätzlich zu Abschnitt 6)
+
+- [ ] macOS + Windows: Snippet löschen → nativer Dialog; „Abbrechen“ behält es
+- [ ] Windows: Kürzel-Editor und Stack-Hinweis zeigen „Strg+Shift+…“ (deutsche Oberfläche)
+- [ ] Großer Verlauf (mehrere 100 Bilder): Fenster bleibt beim Scrollen, Export und Import bedienbar
+- [ ] Windows mit OneDrive-/Defender-Echtzeitscan auf dem Datenordner: Speichern klappt, kein „Speichern fehlgeschlagen“
+- [ ] Schreibgeschützter Datenordner bzw. voller Datenträger: Toast „Änderung konnte nicht gespeichert werden“ erscheint
+- [ ] JSON-Backup im Windows-Editor öffnen, speichern (UTF-8 mit BOM), importieren
+- [ ] Englische Oberfläche: falsche Passphrase, Update-Fehler (offline) → englische Meldung

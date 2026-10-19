@@ -25,7 +25,7 @@ pub fn apply(t: Transform, input: &str) -> Result<String, String> {
         Transform::StripBreaks => strip_breaks(input),
         Transform::JsonPretty => {
             let v: serde_json::Value =
-                serde_json::from_str(input).map_err(|e| format!("invalid JSON: {e}"))?;
+                serde_json::from_str(input).map_err(|e| format!("invalid-json: {e}"))?;
             serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?
         }
         Transform::UrlEncode => url_encode(input),
@@ -84,7 +84,7 @@ fn url_decode(s: &str) -> Result<String, String> {
                 .get(i + 1..i + 3)
                 .and_then(|h| std::str::from_utf8(h).ok())
                 .and_then(|h| u8::from_str_radix(h, 16).ok())
-                .ok_or_else(|| format!("malformed escape at byte {i}"))?;
+                .ok_or_else(|| format!("url-malformed: {i}"))?;
             out.push(hex);
             i += 3;
         } else {
@@ -92,7 +92,7 @@ fn url_decode(s: &str) -> Result<String, String> {
             i += 1;
         }
     }
-    String::from_utf8(out).map_err(|_| "decoded bytes are not valid UTF-8".to_string())
+    String::from_utf8(out).map_err(|_| "url-not-utf8".to_string())
 }
 
 #[cfg(test)]

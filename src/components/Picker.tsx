@@ -4,6 +4,8 @@ import { api, ClipItem, Settings } from '../api';
 import { dicts, Lang } from '../i18n';
 import { IconLogo } from '../icons';
 import { formatCombo } from '../shortcuts';
+import { errorText } from '../errors';
+import { cssColor } from '../color';
 
 const MAX_RESULTS = 10;
 
@@ -16,6 +18,8 @@ export function Picker() {
   const [items, setItems] = useState<ClipItem[]>([]);
   const [idx, setIdx] = useState(0);
   const [axOk, setAxOk] = useState<boolean | null>(null);
+  // a failed paste/copy is shown in the footer instead of the hint
+  const [err, setErr] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const lang: Lang = settings?.language ?? 'de';
@@ -33,6 +37,7 @@ export function Picker() {
 
   const reset = useCallback(() => {
     setQuery('');
+    setErr(null);
     refresh('');
     api.getSettings().then(setSettings).catch(() => {});
     api.accessibilityStatus().then(setAxOk).catch(() => setAxOk(false));
@@ -64,13 +69,17 @@ export function Picker() {
 
   const paste = (item: ClipItem | undefined) => {
     if (!item) return;
-    api.pickerPaste(item.id).catch(() => {});
+    setErr(null);
+    api.pickerPaste(item.id).catch((e) => {
+      // copying failed before the picker was hidden — show why right here
+      setErr(errorText(e, t, lang));
+    });
   };
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      api.hidePicker();
+      api.hidePicker().catch(() => {});
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       setIdx((i) => Math.min(items.length - 1, i + 1));
@@ -117,15 +126,15 @@ export function Picker() {
               {item.kind === 'image' ? 'img' : item.detected === 'url' ? 'url' : 'txt'}
             </span>
             {item.detected === 'color' && (
-              <span className="swatch" style={{ background: item.preview }} />
+              <span className="swatch" style={{ background: cssColor(item.preview) }} />
             )}
             <span className="preview">{item.preview}</span>
             {item.sourceAppName && <span className="meta">{item.sourceAppName}</span>}
           </div>
         ))}
       </div>
-      <div className="pickerfoot">
-        {axOk === null ? '' : axOk ? t.pickerPasteHint : t.pickerCopyHint(formatCombo('CmdOrCtrl+V'))}
+      <div className={`pickerfoot ${err ? 'scerror' : ''}`}>
+        {err ? err : axOk === null ? '' : axOk ? t.pickerPasteHint : t.pickerCopyHint(formatCombo('CmdOrCtrl+V', lang))}
       </div>
     </div>
   );

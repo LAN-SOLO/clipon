@@ -3,6 +3,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { api, RunningApp, Settings, UpdateInfo } from '../api';
 import { Dict } from '../i18n';
+import { errorText, hasCode } from '../errors';
 import {
   ACTIONS,
   ActionDef,
@@ -12,6 +13,7 @@ import {
   hasRealModifier,
   isMac,
   isWindows,
+  modifierWords,
   resolveKeymap,
 } from '../shortcuts';
 
@@ -22,6 +24,11 @@ const clampLimit = (raw: string) =>
   Math.min(HISTORY_MAX, Math.max(HISTORY_MIN, Math.round(Number(raw)) || HISTORY_MIN));
 const clampKb = (raw: string) => Math.min(1048576, Math.max(0, Math.round(Number(raw)) || 0));
 const canListApps = isMac || isWindows;
+
+/** YYYY-MM-DD in local time (toISOString would give the UTC date — the
+ *  day before shortly after midnight in Europe). */
+export const localDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const AX_SETTINGS_URL =
   'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility';
@@ -60,6 +67,12 @@ export function SettingsModal({
   const [passphrase, setPassphrase] = useState('');
   const [dataMsg, setDataMsg] = useState<{ text: string; kind: 'ok' | 'error' } | null>(null);
   const [axOk, setAxOk] = useState<boolean | null>(null);
+  // export/import running — a second start would race the first one
+  const [dataBusy, setDataBusy] = useState(false);
+  const [updErr, setUpdErr] = useState<string | null>(null);
+  const [axErr, setAxErr] = useState<string | null>(null);
+  const lang = settings.language;
+  const errText = (e: unknown) => errorText(e, t, lang);
 
   // number fields keep the raw text while typing (clamping on every key
   // stroke made it impossible to type e.g. "2000"); clamped on blur/save
@@ -93,7 +106,7 @@ export function SettingsModal({
     setScError(null);
     if (rowKey in GLOBAL_FIELD) {
       if (!hasRealModifier(combo)) {
-        setScError(t.scNeedsModifier);
+        setScError(t.scNeedsModifier(modifierWords(settings.language)));
         return;
       }
       set(GLOBAL_FIELD[rowKey as GlobalRow], combo);
@@ -161,7 +174,7 @@ export function SettingsModal({
           setRecording(recording === rowKey ? null : rowKey);
         }}
       >
-        {recording === rowKey ? t.scRecording : formatCombo(combo)}
+        {recording === rowKey ? t.scRecording : formatCombo(combo, settings.language)}
       </button>
     </div>
   );
@@ -198,8 +211,10 @@ export function SettingsModal({
   const pass = passphrase.trim() ? passphrase : null;
 
   const doExport = () => {
+    if (dataBusy) return;
     setDataMsg(null);
-    const date = new Date().toISOString().slice(0, 10);
+    setDataBusy(true);
+    const date = localDate(new Date());
     const ext = pass ? 'clipon-backup' : 'json';
     save({
       defaultPath: `clipon-backup-${date}.${ext}`,
@@ -211,11 +226,14 @@ export function SettingsModal({
           .exportData(path, expHistory, expSnippets, pass)
           .then(() => setDataMsg({ text: t.exportDone, kind: 'ok' }));
       })
-      .catch((e) => setDataMsg({ text: `${t.exportError} ${String(e)}`, kind: 'error' }));
+      .catch((e) => setDataMsg({ text: `${t.exportError} ${errText(e)}`, kind: 'error' }))
+      .finally(() => setDataBusy(false));
   };
 
   const doImport = () => {
+    if (dataBusy) return;
     setDataMsg(null);
+    setDataBusy(true);
     open({
       multiple: false,
       directory: false,
@@ -233,17 +251,18 @@ export function SettingsModal({
           );
       })
       .catch((e) => {
-        const msg = String(e);
         setDataMsg({
-          text: msg === 'passphrase-required' ? t.importNeedsPass : `${t.importError} ${msg}`,
+          text: hasCode(e, 'passphrase-required') ? t.importNeedsPass : `${t.importError} ${errText(e)}`,
           kind: 'error',
         });
-      });
+      })
+      .finally(() => setDataBusy(false));
   };
 
   const checkUpdates = () => {
     setUpdState('checking');
     setUpdate(null);
+    setUpdErr(null);
     api
       .checkUpdate()
       .then((u) => {
@@ -254,7 +273,10 @@ export function SettingsModal({
           setUpdState('none');
         }
       })
-      .catch(() => setUpdState('error'));
+      .catch((e) => {
+        setUpdErr(errText(e));
+        setUpdState('error');
+      });
   };
 
   return (
@@ -437,17 +459,18 @@ export function SettingsModal({
                     api
                       .requestAccessibility()
                       .then(setAxOk)
-                      .catch(() => {})
+                      .catch((e) => setAxErr(errText(e)))
                   }
                 >
                   {t.axRequest}
                 </button>
               )}
-              <button className="ghost" onClick={() => openUrl(AX_SETTINGS_URL).catch(() => {})}>
+              <button className="ghost" onClick={() => openUrl(AX_SETTINGS_URL).catch((e) => setAxErr(errText(e)))}>
                 {t.axOpenSettings}
               </button>
             </div>
             <div className="note">{t.axExplain}</div>
+            {axErr && <div className="note scerror">{axErr}</div>}
           </>
         )}
 
@@ -475,10 +498,13 @@ export function SettingsModal({
           />
         </label>
         <div className="updatebox">
-          <button disabled={!expHistory && !expSnippets} onClick={doExport}>
+          <button disabled={dataBusy || (!expHistory && !expSnippets)} onClick={doExport}>
             {t.exportData}
           </button>
-          <button onClick={doImport}>{t.importData}</button>
+          <button disabled={dataBusy} onClick={doImport}>
+            {t.importData}
+          </button>
+          {dataBusy && <span className="note">{t.busy}</span>}
         </div>
         {dataMsg && (
           <div className={`note ${dataMsg.kind === 'error' ? 'scerror' : 'ok'}`}>{dataMsg.text}</div>
@@ -494,7 +520,9 @@ export function SettingsModal({
             {updState === 'checking' ? t.checking : t.checkUpdates}
           </button>
           {updState === 'none' && <span>{t.upToDate}</span>}
-          {updState === 'error' && <span style={{ color: 'var(--red)' }}>{t.updateError}</span>}
+          {updState === 'error' && (
+            <span style={{ color: 'var(--red)' }}>{updErr ?? t.updateError}</span>
+          )}
           {update && (
             <>
               <span>
@@ -505,7 +533,11 @@ export function SettingsModal({
                 disabled={installing}
                 onClick={() => {
                   setInstalling(true);
-                  api.installUpdate().catch(() => setInstalling(false));
+                  api.installUpdate().catch((e) => {
+                    setInstalling(false);
+                    setUpdErr(errText(e));
+                    setUpdState('error');
+                  });
                 }}
               >
                 {t.installUpdate}

@@ -117,3 +117,10 @@ export function fmtHsl(c: Rgba): string {
 }
 
 const trim = (a: number) => String(Math.round(a * 100) / 100);
+
+/** Safe CSS value for a colour swatch: the parsed colour re-serialised as
+ *  rgba(), never the raw clipboard text (which could carry url(…) etc.). */
+export function cssColor(input: string): string | undefined {
+  const c = parseColor(input);
+  return c ? `rgba(${c.r}, ${c.g}, ${c.b}, ${c.a})` : undefined;
+}

@@ -98,7 +98,7 @@ const de: Content = {
       title: 'Der Paste-Stack',
       body: [
         'Sammle mehrere Einträge über „In den Stack“ und hole sie in Reihenfolge zurück — ideal für Formulare.',
-        'Cmd/Ctrl+Shift+B kopiert den jeweils nächsten Stack-Eintrag, ganz ohne das Fenster zu öffnen.',
+        'Cmd/Strg+Shift+B kopiert den jeweils nächsten Stack-Eintrag, ganz ohne das Fenster zu öffnen.',
       ],
     },
     {
@@ -111,16 +111,16 @@ const de: Content = {
     {
       title: 'Quick-Picker',
       body: [
-        'Cmd/Ctrl+Shift+Leertaste öffnet in jeder App ein kleines Suchfenster am Mauszeiger: tippen, mit ↑↓ wählen, ↩ — und der Eintrag landet direkt im Text, in dem du gerade schreibst.',
-        'Auf dem Mac braucht das direkte Einfügen einmalig die Berechtigung „Bedienungshilfen“ (Einstellungen → Direktes Einfügen); ohne sie kopiert der Picker nur, und du drückst Cmd+V. Unter Windows (Ctrl+Shift+Leertaste) fügt der Picker ohne weitere Freigabe direkt ein.',
+        'Cmd/Strg+Shift+Leertaste öffnet in jeder App ein kleines Suchfenster am Mauszeiger: tippen, mit ↑↓ wählen, ↩ — und der Eintrag landet direkt im Text, in dem du gerade schreibst.',
+        'Auf dem Mac braucht das direkte Einfügen einmalig die Berechtigung „Bedienungshilfen“ (Einstellungen → Direktes Einfügen); ohne sie kopiert der Picker nur, und du drückst Cmd+V. Unter Windows (Strg+Shift+Leertaste) fügt der Picker ohne weitere Freigabe direkt ein.',
       ],
     },
     {
       title: 'Kürzel & Tray',
       body: [
-        '• Cmd/Ctrl+Shift+V — clipon-Fenster ein-/ausblenden, von überall',
-        '• Cmd/Ctrl+Shift+B — Paste-Stack: nächsten Eintrag kopieren',
-        '• Cmd/Ctrl+Shift+Leertaste — Quick-Picker am Mauszeiger',
+        '• Cmd/Strg+Shift+V — clipon-Fenster ein-/ausblenden, von überall',
+        '• Cmd/Strg+Shift+B — Paste-Stack: nächsten Eintrag kopieren',
+        '• Cmd/Strg+Shift+Leertaste — Quick-Picker am Mauszeiger',
         'Das Schließen des Fensters beendet clipon nicht — es läuft im Tray weiter und zeichnet auf. Beenden geht über das Tray-Menü.',
         'Alle Kürzel lassen sich im Kürzel-Editor der Einstellungen frei belegen.',
       ],
@@ -157,7 +157,7 @@ const de: Content = {
     {
       sel: '[data-tour="stack"]',
       title: 'Paste-Stack',
-      body: 'Sammle mehrere Einträge und hole sie in Reihenfolge zurück — ideal für Formulare. Cmd/Ctrl+Shift+B kopiert den nächsten, von überall.',
+      body: 'Sammle mehrere Einträge und hole sie in Reihenfolge zurück — ideal für Formulare. Cmd/Strg+Shift+B kopiert den nächsten, von überall.',
     },
     {
       sel: '[data-tour="snippets"]',
@@ -192,6 +192,7 @@ const de: Content = {
         '• Symbole am Eintrag (bei Maus darüber): Kopieren, Anpinnen, In den Stack, Löschen',
         'Der Typ jedes Eintrags wird automatisch erkannt und als Badge angezeigt: url (Links), @ (E-Mail), col (Farben, mit Farbfeld), { } (Code), img (Bilder), file (kopierte Dateien), txt (alles andere).',
         'Die Verlaufsgröße ist einstellbar (Standard 500 Einträge). Ist das Limit erreicht, werden die ältesten unangepinnten Einträge entfernt.',
+        'Klappt etwas nicht (Zwischenablage gesperrt, Datei nicht speicherbar, Eintrag inzwischen gelöscht), zeigt clipon unten eine Meldung in der eingestellten Sprache — auch wenn das Speichern im Hintergrund scheitert, etwa bei vollem Datenträger.',
       ],
     },
     {
@@ -216,11 +217,11 @@ const de: Content = {
       title: 'Paste-Stack',
       body: [
         'Der Stack ist eine Warteschlange zum Einfügen in Reihenfolge: Einträge über „In den Stack“ sammeln, dann nacheinander abrufen.',
-        '• „Nächsten kopieren“ im Stack-Bereich — oder von überall per Cmd/Ctrl+Shift+B',
+        '• „Nächsten kopieren“ im Stack-Bereich — oder von überall per Cmd/Strg+Shift+B',
         '• Jeder Abruf kopiert den vordersten Eintrag und entfernt ihn aus dem Stack',
         '• Einzelne Einträge entfernen oder den ganzen Stack leeren',
         '• „Zusammenführen“ fügt alle Text-Einträge des Stacks (in Stack-Reihenfolge, durch Zeilenumbrüche getrennt) zu einem neuen Verlaufs-Eintrag zusammen und kopiert ihn — der Stack bleibt dabei erhalten, Bilder werden übersprungen',
-        'Typischer Ablauf: fünf Angaben aus einem Dokument kopieren, alle in den Stack, dann im Formular Feld für Feld Cmd/Ctrl+Shift+B → Cmd/Ctrl+V.',
+        'Typischer Ablauf: fünf Angaben aus einem Dokument kopieren, alle in den Stack, dann im Formular Feld für Feld Cmd/Strg+Shift+B → Cmd/Strg+V.',
       ],
     },
     {
@@ -230,7 +231,7 @@ const de: Content = {
         'Snippets sind gespeicherte Textbausteine mit Namen — unabhängig vom Verlauf, sie verfallen nie.',
         '• Anlegen: „Neues Snippet“ im Snippets-Bereich',
         '• Klick auf ein Snippet kopiert seinen Text',
-        '• Bearbeiten und Löschen über die Symbole am Eintrag',
+        '• Bearbeiten und Löschen über die Symbole am Eintrag — vor dem Löschen fragt clipon nach, denn ein gelöschtes Snippet ist weg',
         'Snippets liegen wie der Verlauf in der verschlüsselten Datenbank.',
       ],
     },
@@ -269,19 +270,20 @@ const de: Content = {
         '• Ohne Passphrase entsteht eine lesbare JSON-Datei (Bilder darin als Base64) — praktisch, um Daten weiterzuverarbeiten, aber unverschlüsselt',
         '• Mit Passphrase wird die Datei AES-256-GCM-verschlüsselt (Schlüssel per PBKDF2 aus der Passphrase) — sie lässt sich auf jedem Rechner mit derselben Passphrase wieder einlesen, unabhängig vom Schlüsselbund',
         'Import: dieselbe Stelle, „Importieren …“ (Backups bis 1 GB). Für verschlüsselte Backups vorher die Passphrase ins Feld eintragen. Einträge, die schon im Verlauf sind, werden übersprungen (Duplikat-Erkennung über den Inhalt), Pins und Zeitstempel bleiben erhalten; Vorschau und Typ berechnet clipon beim Import neu. Die Verlaufsgröße gilt auch nach dem Import — überzählige alte Einträge werden aufgeräumt.',
+        'Während ein Export oder Import läuft, sind beide Knöpfe gesperrt („Läuft …“); das Fenster bleibt dabei bedienbar. Der vorgeschlagene Dateiname trägt das heutige Datum (Ortszeit). JSON-Dateien, die unter Windows mit dem Editor gespeichert wurden (UTF-8 mit BOM), liest clipon ebenfalls ein.',
       ],
     },
     {
       id: 'picker',
       title: 'Quick-Picker',
       body: [
-        'Der Quick-Picker ist ein kleines Fenster am Mauszeiger, das du in jeder App per Cmd/Ctrl+Shift+Leertaste öffnest — ohne das Hauptfenster.',
+        'Der Quick-Picker ist ein kleines Fenster am Mauszeiger, das du in jeder App per Cmd/Strg+Shift+Leertaste öffnest — ohne das Hauptfenster.',
         '• Tippen filtert den Verlauf, ↑↓ bewegen die Auswahl',
         '• ↩ oder Klick fügt den Eintrag direkt in die App ein, aus der du gekommen bist',
         '• 1–9 wählen den Eintrag mit dieser Nummer (bei leerer Suche, sonst mit Cmd)',
         '• Esc oder ein Klick außerhalb schließt den Picker',
-        'Direktes Einfügen: clipon bringt die vorherige App wieder nach vorn und drückt für dich Cmd+V bzw. Ctrl+V. Auf dem Mac braucht es dafür die Berechtigung „Bedienungshilfen“ — Einstellungen → Direktes Einfügen → „Berechtigung anfordern“. Solange sie fehlt, kopiert der Picker nur, und du fügst mit Cmd+V selbst ein.',
-        'Windows: Das direkte Einfügen funktioniert ohne Freigabe. Ausnahme: Programme, die als Administrator laufen, nehmen von clipon keine Tastendrücke an — dort liegt der Eintrag in der Zwischenablage, und du drückst Ctrl+V selbst.',
+        'Direktes Einfügen: clipon bringt die vorherige App wieder nach vorn und drückt für dich Cmd+V bzw. Strg+V. Auf dem Mac braucht es dafür die Berechtigung „Bedienungshilfen“ — Einstellungen → Direktes Einfügen → „Berechtigung anfordern“. Solange sie fehlt, kopiert der Picker nur, und du fügst mit Cmd+V selbst ein.',
+        'Windows: Das direkte Einfügen funktioniert ohne Freigabe. Ausnahme: Programme, die als Administrator laufen, nehmen von clipon keine Tastendrücke an — dort liegt der Eintrag in der Zwischenablage, und du drückst Strg+V selbst.',
         'Hinweis für Entwickler-Builds: Die Berechtigung hängt an der App-Datei; nach einem Neubau muss sie erneut erteilt werden.',
       ],
     },
@@ -289,7 +291,7 @@ const de: Content = {
       id: 'colors',
       title: 'Farben',
       body: [
-        'clipon erkennt kopierte Farbwerte automatisch: #38bdf8, #fff, #38bdf8cc, rgb(56, 189, 248), rgba(…), hsl(199, 89%, 60%) und hsla(…). Sie bekommen das col-Badge und ein Farbfeld in der Liste.',
+        'clipon erkennt kopierte Farbwerte automatisch: #38bdf8, #fff, #38bdf8cc, rgb(56, 189, 248), rgba(…), hsl(199, 89%, 60%) und hsla(…). Sie bekommen das col-Badge und ein Farbfeld in der Liste. Zwischen den Klammern dürfen nur Zahlen, Einheiten und Trennzeichen stehen — CSS-Schnipsel wie „rgb(0 0 0) url(…)“ bleiben normaler Text.',
         'Die Detail-Ansicht zeigt ein großes Farbfeld und rechnet die Farbe in alle Formate um — Hex, RGB und HSL. Das Kopieren-Symbol neben einem Format kopiert es und legt es zugleich als neuen Eintrag in den Verlauf.',
         'Farben wählen und picken: Im Filter „Farben“ sitzt oben der Farbwähler.',
         '• „Farbe wählen“ öffnet den System-Farbwähler — auf dem Mac inklusive Pipette, mit der du jede Farbe irgendwo auf dem Bildschirm aufnimmst',
@@ -311,12 +313,13 @@ const de: Content = {
       id: 'shortcuts',
       title: 'Kürzel',
       body: [
-        '• Cmd/Ctrl+Shift+V — Fenster ein-/ausblenden (global, funktioniert in jeder App)',
-        '• Cmd/Ctrl+Shift+B — Paste-Stack: nächsten Eintrag kopieren (global)',
-        '• Cmd/Ctrl+Shift+Leertaste — Quick-Picker am Mauszeiger öffnen (global)',
-        'In der App hat jede Aktion ein Kürzel: Cmd/Ctrl+1–8 wechseln Filter und Ansichten, Pfeiltasten bewegen die Auswahl, Enter kopiert sie, Cmd/Ctrl+P pinnt, Cmd/Ctrl+S legt in den Stack, Backspace löscht, Cmd/Ctrl+E bearbeitet Snippets, Cmd/Ctrl+F springt in die Suche, Cmd/Ctrl+, öffnet die Einstellungen, F1 diese Hilfe.',
-        'Dazu die Werkzeug-Kürzel: Cmd/Ctrl+Shift+P pausiert die Aufnahme, Cmd/Ctrl+Shift+Backspace leert den Verlauf, Cmd/Ctrl+Shift+N kopiert den nächsten Stack-Eintrag (in der App — global bleibt Cmd/Ctrl+Shift+B), Cmd/Ctrl+Shift+X leert den Stack, Cmd/Ctrl+N legt ein neues Snippet an.',
+        '• Cmd/Strg+Shift+V — Fenster ein-/ausblenden (global, funktioniert in jeder App)',
+        '• Cmd/Strg+Shift+B — Paste-Stack: nächsten Eintrag kopieren (global)',
+        '• Cmd/Strg+Shift+Leertaste — Quick-Picker am Mauszeiger öffnen (global)',
+        'In der App hat jede Aktion ein Kürzel: Cmd/Strg+1–8 wechseln Filter und Ansichten, Pfeiltasten bewegen die Auswahl, Enter kopiert sie, Cmd/Strg+P pinnt, Cmd/Strg+S legt in den Stack, Backspace löscht, Cmd/Strg+E bearbeitet Snippets, Cmd/Strg+F springt in die Suche, Cmd/Strg+, öffnet die Einstellungen, F1 diese Hilfe.',
+        'Dazu die Werkzeug-Kürzel: Cmd/Strg+Shift+P pausiert die Aufnahme, Cmd/Strg+Shift+Backspace leert den Verlauf, Cmd/Strg+Shift+N kopiert den nächsten Stack-Eintrag (in der App — global bleibt Cmd/Strg+Shift+B), Cmd/Strg+Shift+X leert den Stack, Cmd/Strg+N legt ein neues Snippet an.',
         'Alle Kürzel — global wie in der App — belegst du im Kürzel-Editor der Einstellungen frei: auf ein Kürzel klicken, neue Tastenkombination drücken. Konflikte werden erkannt, ↺ setzt einzelne zurück, „Alle zurücksetzen" den ganzen Satz.',
+        'Angezeigt werden die Kürzel so, wie sie auf der Tastatur stehen: auf dem Mac ⌘⇧V, unter Windows und Linux Strg+Shift+V (in der englischen Oberfläche Ctrl).',
       ],
     },
     {
@@ -365,7 +368,7 @@ const de: Content = {
       body: [
         'Das Schließen des Fensters (X) versteckt es nur — clipon läuft im Hintergrund weiter und zeichnet auf.',
         'Tray-Menü (Mac: Menüleiste, Windows: Infobereich der Taskleiste, ggf. hinter dem ^-Pfeil): clipon öffnen, Aufnahme pausieren, clipon beenden.',
-        'Auf dem Mac holt auch ein Klick auf das Dock-Symbol das Fenster zurück — oder das globale Kürzel Cmd/Ctrl+Shift+V.',
+        'Auf dem Mac holt auch ein Klick auf das Dock-Symbol das Fenster zurück — oder das globale Kürzel Cmd/Strg+Shift+V.',
         'clipon läuft nur einmal: Startest du es erneut (etwa per Startmenü, während es schon im Tray läuft), holt das das vorhandene Fenster nach vorn, statt eine zweite Kopie zu starten.',
       ],
     },
@@ -519,6 +522,7 @@ const en: Content = {
         '• Icons on hover: copy, pin, add to stack, delete',
         'Each item’s type is detected automatically and shown as a badge: url (links), @ (email), col (colors, with a swatch), { } (code), img (images), file (copied files), txt (everything else).',
         'The history size is configurable (default 500 items). When the limit is reached, the oldest unpinned items are removed.',
+        'If something goes wrong (clipboard locked, file cannot be saved, item deleted in the meantime), clipon shows a message at the bottom in the selected language — also when saving fails in the background, e.g. on a full disk.',
       ],
     },
     {
@@ -557,7 +561,7 @@ const en: Content = {
         'Snippets are saved text blocks with a name — independent of the history, they never expire.',
         '• Create: “New snippet” in the snippets view',
         '• Click a snippet to copy its text',
-        '• Edit and delete via the icons on each entry',
+        '• Edit and delete via the icons on each entry — clipon asks before deleting, because a deleted snippet is gone for good',
         'Snippets live in the same encrypted database as the history.',
       ],
     },
@@ -596,6 +600,7 @@ const en: Content = {
         '• Without a passphrase you get a readable JSON file (images inside as Base64) — handy for processing the data elsewhere, but unencrypted',
         '• With a passphrase the file is AES-256-GCM-encrypted (key derived via PBKDF2 from the passphrase) — it can be restored on any machine with the same passphrase, independent of the keychain',
         'Import: same place, “Import …” (backups up to 1 GB). For encrypted backups, enter the passphrase in the field first. Items already in the history are skipped (duplicate detection by content); pins and timestamps are preserved, preview and type are recomputed on import. The history size still applies after an import — surplus old items are cleaned up.',
+        'While an export or import is running, both buttons are disabled (“Working …”); the window stays responsive. The suggested file name carries today’s date (local time). JSON files saved with Windows Notepad (UTF-8 with BOM) are read as well.',
       ],
     },
     {
@@ -616,7 +621,7 @@ const en: Content = {
       id: 'colors',
       title: 'Colors',
       body: [
-        'clipon detects copied color values automatically: #38bdf8, #fff, #38bdf8cc, rgb(56, 189, 248), rgba(…), hsl(199, 89%, 60%) and hsla(…). They get the col badge and a swatch in the list.',
+        'clipon detects copied color values automatically: #38bdf8, #fff, #38bdf8cc, rgb(56, 189, 248), rgba(…), hsl(199, 89%, 60%) and hsla(…). They get the col badge and a swatch in the list. Only numbers, units and separators are allowed inside the parentheses — CSS snippets like “rgb(0 0 0) url(…)” stay plain text.',
         'The detail pane shows a large swatch and converts the color to every format — hex, RGB and HSL. The copy icon next to a format copies it and files it as a new history entry at the same time.',
         'Picking colors: the color bar sits on top of the “Colors” filter.',
         '• “Pick color” opens the system color picker — on the Mac including an eyedropper that samples any color anywhere on your screen',
@@ -644,6 +649,7 @@ const en: Content = {
         'Inside the app every action has a shortcut: Cmd/Ctrl+1–8 switch filters and views, arrow keys move the selection, Enter copies it, Cmd/Ctrl+P pins, Cmd/Ctrl+S adds to the stack, Backspace deletes, Cmd/Ctrl+E edits snippets, Cmd/Ctrl+F jumps to search, Cmd/Ctrl+, opens Settings, F1 this help.',
         'Plus the tool shortcuts: Cmd/Ctrl+Shift+P pauses capturing, Cmd/Ctrl+Shift+Backspace clears the history, Cmd/Ctrl+Shift+N copies the next stack item (in-app — globally it stays Cmd/Ctrl+Shift+B), Cmd/Ctrl+Shift+X clears the stack, Cmd/Ctrl+N creates a new snippet.',
         'Every shortcut — global and in-app — is freely configurable in the shortcut editor in Settings: click a shortcut, press the new key combination. Conflicts are detected, ↺ resets one binding, “Reset all” the whole set.',
+        'Shortcuts are shown the way they are printed on the keyboard: ⌘⇧V on the Mac, Ctrl+Shift+V on Windows and Linux (Strg in the German interface).',
       ],
     },
     {

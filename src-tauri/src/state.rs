@@ -46,11 +46,14 @@ impl AppState {
         dir
     }
 
-    pub fn persist(&self) {
+    /// Encrypts and writes the store. Commands pass the error on to the UI
+    /// (shown as "could not save"); the watcher only logs it.
+    pub fn persist(&self) -> Result<(), String> {
         let store = self.store.lock().unwrap();
-        if let Err(e) = clipon_core::save_store(&store, &self.store_path(), &self.key) {
+        clipon_core::save_store(&store, &self.store_path(), &self.key).map_err(|e| {
             eprintln!("clipon: could not save history: {e}");
-        }
+            format!("save-failed: {e}")
+        })
     }
 
     /// Blob names come from the store; only plain file names inside the
@@ -66,7 +69,7 @@ impl AppState {
         if is_blob_name(file) {
             Ok(self.blobs_dir().join(file))
         } else {
-            Err("invalid blob name".into())
+            Err("invalid-blob".into())
         }
     }
 }
