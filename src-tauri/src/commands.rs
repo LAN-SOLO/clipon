@@ -489,7 +489,12 @@ pub async fn import_data(
                 image::load_from_memory(&png).ok()?;
                 let blob = clipon_core::encrypt(&st.key, &png).ok()?;
                 let name = format!("{}.bin", Uuid::new_v4());
-                std::fs::write(st.blobs_dir().join(&name), blob).ok()?;
+                let file = st.blobs_dir().join(&name);
+                // full disk: don't leave a partial blob behind
+                if std::fs::write(&file, blob).is_err() {
+                    let _ = std::fs::remove_file(&file);
+                    return None;
+                }
                 Some(name)
             });
             (stats, store.enforce_limit(limit.max(1)))

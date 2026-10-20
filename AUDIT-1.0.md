@@ -408,3 +408,63 @@ alle bestanden, 0 Konsolenfehler, 0 IPC-Argumentfehler.
 - [ ] 300+ Bilder im Verlauf (Release-Build): Filter „Bilder“ öffnet ohne Hänger, Scrollen flüssig, Vorschauen erscheinen beim Scrollen
 - [ ] Limit 10 mit 10+ Pins: neue Kopien erscheinen und bleiben
 - [ ] Autostart auf macOS: Eintrag unter Systemeinstellungen → Allgemein → Anmeldeobjekte („Im Hintergrund erlauben“)
+
+## Runde 3 – Verifikation (2026-10-20)
+
+Unabhängige, skeptische Nachprüfung von `deba300` (Diff `7c05322..deba300`), mit dem Ziel, den
+Bericht der Runde 3 zu widerlegen.
+
+### Nachgeprüft und bestätigt
+
+- `enforce_limit` zählt nur unangepinnte Einträge; alle Aufrufer (Watcher Text/Dateien/Bild,
+  `add_text_and_copy`, Import, Limit-Verkleinerung in den Einstellungen) nutzen dieselbe Funktion —
+  keine Stelle rechnet im Frontend mit `items.len() <= limit`. Folge (gewollt, Help stimmt): Wer einen
+  Eintrag löst, während das Limit voll ist, verliert mit der nächsten Kopie die zwei ältesten
+  unangepinnten Einträge.
+- Watcher `write_blob`: `last_seen` wird vor dem Schreiben gesetzt, ein dauerhaft voller Datenträger
+  erzeugt also keine Meldungsflut im 400-ms-Takt; das Event-Format `io: …` wird von `errors.ts`
+  übersetzt.
+- Hintergrund-Meldungen (`bgToast`): nur `save-failed`/`action-failed` laufen darüber, vom Nutzer
+  ausgelöste Fehler weiterhin sofort; die gemerkte Meldung erscheint genau einmal.
+- Vorschaubild-Warteschlange: Zeilen, die vor ihrem Start verschwinden (Filterwechsel), geben ihren
+  Platz sofort frei (`alive`-Prüfung im Job); die große Detail-Vorschau umgeht die Warteschlange.
+- Stichprobe von Help-Aussagen, die Runde 3 nicht erwähnt hat — alle gegen den Code bestätigt:
+  Volltextsuche über den ganzen Text, Bilder über den Dateinamen (Vorschau), „Zusammenführen“
+  (Zeilenumbruch, Stack bleibt, Bilder übersprungen), Import bis 1 GB, fehlende Endung wird ergänzt,
+  Dateiname mit lokalem Datum, UTF-8-BOM-JSON, „Zeilenumbrüche entfernen“ (Leerzeichen),
+  URL-Kodierung nach RFC 3986 (nur `A–Z a–z 0–9 - _ . ~` bleiben), Farberkennung inkl.
+  `rgb(0 0 0) url(…)` als Text, Verlaufsgröße 10–100.000 (UI), Duplikat rückt nach oben und zählt,
+  Picker schließt bei Esc und Fokusverlust, „Beim Leeren Pins behalten“ standardmäßig an,
+  Autostart als LaunchAgent, Snippets in der verschlüsselten Datenbank.
+
+### In dieser Prüfung zusätzlich behoben
+
+- **Platzhalter quadratisch (Regression aus Runde 3):** Die neue Regel für `{a {date}}` ging pro
+  `{` nur ein Zeichen weiter und suchte danach erneut die nächste `}` — ein Snippet mit sehr vielen
+  `{` vor einer `}` (z. B. eingefügter Minified-Code) brauchte quadratisch lange und blockierte das
+  Kopieren. Jetzt springt die Erweiterung direkt zur letzten `{` vor der `}`; Ergebnis identisch,
+  Laufzeit linear. Test mit 200.000 `{` ergänzt, dazu `{x {y {date}!`.
+- **Import:** Scheitert das Schreiben eines Bild-Blobs (voller Datenträger), wird die halbe
+  `.bin`-Datei jetzt entfernt (vorher blieb sie liegen). Das Überspringen als Duplikat bleibt wie in
+  Runde 3 dokumentiert.
+- Beides ohne sichtbare Verhaltensänderung in der Oberfläche — Help/README unverändert.
+
+### Widerlegt / eingeschränkt
+
+- Keine Aussage des Runde-3-Berichts widerlegt. Einschränkung: Der leere 36-px-Platzhalter bleibt
+  auch stehen, wenn ein Vorschaubild nicht geladen werden kann (Blob fehlt) — vorher war die Lücke
+  0 px. Rein optisch, unverändert gelassen.
+
+### Tests der Verifikation
+
+| Prüfung | Ergebnis |
+|---|---|
+| `cargo test --workspace` | 33 Core + 9 App = 42 grün (Platzhalter-Test erweitert) |
+| `pnpm build` (tsc + vite) | fehlerfrei |
+| `cargo clippy --workspace --tests` | nur die bekannten `sort_by_key`-Hinweise |
+| Windows-Cross-Typecheck (`x86_64-pc-windows-msvc`, kein Link) | fehlerfrei, 0 Warnungen |
+| UI-Harness | Runde 3 (22), Runde 1 (31), Runde 2 (13), Verifikation (3) je zweimal, dazu Runde 3 und Windows-Suite mit Windows-Plattform — alle bestanden, 0 Konsolen-/IPC-Fehler; der in Runde 3 notierte Ausreißer trat nicht auf |
+
+Weiterhin nur geprüft, nicht ausgeführt: Watcher- und Import-Fehlerpfad bei echtem vollem
+Datenträger; `focus`/`visibilitychange` in WKWebView/WebView2 beim Wiedereinblenden. Die
+Geräte-Checkliste aus Runde 3 gilt unverändert.

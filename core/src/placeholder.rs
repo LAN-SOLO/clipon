@@ -16,11 +16,15 @@ pub fn expand(text: &str, now: DateTime<Local>, clipboard: Option<&str>) -> Stri
                 out.push_str(&rest[start..]);
                 return out;
             }
-            // "{a {date}}": the inner brace opens the real token — keep the
-            // outer one literal and continue from there
+            // "{a {date}}": the innermost brace before the '}' opens the real
+            // token — everything before it stays literal. Jumping straight to
+            // the last '{' keeps this linear (a long "{{{{…}" would otherwise
+            // rescan the rest of the text once per brace).
             Some(end) if after[..end].contains('{') => {
+                let inner = after[..end].rfind('{').unwrap_or(0);
                 out.push('{');
-                rest = after;
+                out.push_str(&after[..inner]);
+                rest = &after[inner..];
             }
             Some(end) => {
                 let token = &after[..end];
@@ -85,5 +89,11 @@ mod tests {
         assert_eq!(expand("}{date}{", now(), None), "}2026-08-24{");
         assert_eq!(expand("{a {date}}", now(), None), "{a 2026-08-24}");
         assert_eq!(expand("{{time}}", now(), None), "{09:05}");
+        assert_eq!(expand("{x {y {date}!", now(), None), "{x {y 2026-08-24!");
+        // many braces before one '}' must not go quadratic
+        let many = format!("{}{{date}}", "{".repeat(200_000));
+        let t0 = std::time::Instant::now();
+        assert_eq!(expand(&many, now(), None), format!("{}2026-08-24", "{".repeat(200_000)));
+        assert!(t0.elapsed() < std::time::Duration::from_secs(2));
     }
 }
