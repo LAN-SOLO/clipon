@@ -22,7 +22,7 @@ const de = {
   empty: 'Noch nichts hier. Kopiere irgendwo etwas — clipon merkt es sich.',
   emptyFiltered: 'Keine Treffer',
   emptyPinned:
-    'Noch nichts angepinnt.\nFahre mit der Maus über einen Eintrag und klicke das Pin-Symbol — Angepinntes überlebt das Aufräumen und das Leeren des Verlaufs.',
+    'Noch nichts angepinnt.\nFahre mit der Maus über einen Eintrag und klicke das Pin-Symbol — Angepinntes überlebt das Aufräumen und (Standard) das Leeren des Verlaufs.',
   emptyText: 'Noch kein Text im Verlauf.\nKopiere irgendwo Text — er landet automatisch hier.',
   emptyLinks: 'Noch keine Links.\nKopierte URLs (https://…, www.…) landen automatisch hier.',
   emptyColors:
@@ -232,7 +232,7 @@ const en: typeof de = {
   empty: 'Nothing here yet. Copy something anywhere — clipon will remember it.',
   emptyFiltered: 'No matches',
   emptyPinned:
-    'Nothing pinned yet.\nHover over an item and click the pin icon — pinned items survive cleanup and clearing the history.',
+    'Nothing pinned yet.\nHover over an item and click the pin icon — pinned items survive cleanup and (by default) clearing the history.',
   emptyText: 'No text in the history yet.\nCopy text anywhere — it lands here automatically.',
   emptyLinks: 'No links yet.\nCopied URLs (https://…, www.…) land here automatically.',
   emptyColors:

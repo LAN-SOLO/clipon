@@ -82,8 +82,8 @@ const de: Content = {
       title: 'Pins',
       body: [
         'Wichtiges pinnst du an: Fahre über einen Eintrag und klicke das Pin-Symbol — es färbt sich gelb, der Eintrag trägt einen Punkt.',
-        'Angepinnte Einträge überleben das Aufräumen und das Leeren des Verlaufs. Der Filter „Pins“ zeigt sie alle auf einen Blick.',
-        'Der Verlauf hält standardmäßig 500 Einträge; die ältesten unangepinnten fliegen zuerst raus.',
+        'Angepinnte Einträge überleben das Aufräumen und — solange „Beim Leeren Pins behalten“ an ist (Standard) — auch das Leeren des Verlaufs. Der Filter „Pins“ zeigt sie alle auf einen Blick.',
+        'Der Verlauf hält standardmäßig 500 Einträge, Pins nicht mitgezählt; die ältesten unangepinnten fliegen zuerst raus.',
       ],
     },
     {
@@ -137,12 +137,12 @@ const de: Content = {
     {
       sel: '[data-tour="filters"]',
       title: 'Filter',
-      body: 'Der Verlauf, gefiltert: Alles, Pins, Text, Links, Farben, Bilder. „Pins“ zeigt Angepinntes — es überlebt Aufräumen und Leeren. „Farben“ hat oben einen Farbwähler mit Pipette.',
+      body: 'Der Verlauf, gefiltert: Alles, Pins, Text, Links, Farben, Bilder. „Pins“ zeigt Angepinntes — es überlebt Aufräumen und (Standard-Einstellung) Leeren. „Farben“ hat oben einen Farbwähler mit Pipette.',
     },
     {
       sel: '[data-tour="search"]',
       title: 'Suche',
-      body: 'Volltextsuche über den ganzen Verlauf — Bilder findest du über ihren Dateinamen. Der Papierkorb daneben leert den Verlauf (Pins bleiben).',
+      body: 'Volltextsuche über den ganzen Verlauf — Bilder findest du über ihren Dateinamen. Der Papierkorb daneben leert den Verlauf (Pins bleiben, außer du schaltest das in den Einstellungen ab).',
     },
     {
       sel: '[data-tour="list"]',
@@ -191,8 +191,8 @@ const de: Content = {
         '• Doppelklick oder Kopieren-Symbol — zurück in die Zwischenablage',
         '• Symbole am Eintrag (bei Maus darüber): Kopieren, Anpinnen, In den Stack, Löschen',
         'Der Typ jedes Eintrags wird automatisch erkannt und als Badge angezeigt: url (Links), @ (E-Mail), col (Farben, mit Farbfeld), { } (Code), img (Bilder), file (kopierte Dateien), txt (alles andere).',
-        'Die Verlaufsgröße ist einstellbar (Standard 500 Einträge). Ist das Limit erreicht, werden die ältesten unangepinnten Einträge entfernt.',
-        'Klappt etwas nicht (Zwischenablage gesperrt, Datei nicht speicherbar, Eintrag inzwischen gelöscht), zeigt clipon unten eine Meldung in der eingestellten Sprache — auch wenn das Speichern im Hintergrund scheitert, etwa bei vollem Datenträger.',
+        'Die Verlaufsgröße ist einstellbar (Standard 500 Einträge); angepinnte zählen nicht mit. Gibt es mehr unangepinnte Einträge als erlaubt, werden die ältesten davon entfernt — angepinnte nie.',
+        'Klappt etwas nicht (Zwischenablage gesperrt, Datei nicht speicherbar, Eintrag inzwischen gelöscht), zeigt clipon unten eine Meldung in der eingestellten Sprache — auch wenn das Speichern im Hintergrund scheitert, etwa bei vollem Datenträger. Passiert das, während das Fenster versteckt ist, erscheint die Meldung beim nächsten Öffnen noch einmal.',
       ],
     },
     {
@@ -208,7 +208,7 @@ const de: Content = {
       id: 'pins',
       title: 'Pins',
       body: [
-        'Angepinnte Einträge (gelber Punkt) sind vor automatischem Aufräumen und vor „Verlauf leeren“ geschützt.',
+        'Angepinnte Einträge (gelber Punkt) sind vor automatischem Aufräumen geschützt und zählen nicht zur Verlaufsgröße; vor „Verlauf leeren“ schützt sie die Einstellung „Beim Leeren Pins behalten“ (Standard: an).',
         'Anpinnen und Lösen: über das Pin-Symbol am Eintrag oder den Knopf in der Detail-Ansicht. Der Filter „Pins“ zeigt alle auf einen Blick.',
       ],
     },
@@ -219,7 +219,7 @@ const de: Content = {
         'Der Stack ist eine Warteschlange zum Einfügen in Reihenfolge: Einträge über „In den Stack“ sammeln, dann nacheinander abrufen.',
         '• „Nächsten kopieren“ im Stack-Bereich — oder von überall per Cmd/Strg+Shift+B',
         '• Jeder Abruf kopiert den vordersten Eintrag und entfernt ihn erst danach aus dem Stack — ist die Zwischenablage gerade gesperrt, bleibt er vorn und du versuchst es einfach noch einmal',
-        '• Lässt sich ein Eintrag gar nicht mehr kopieren (Bilddatei fehlt oder ist beschädigt), nimmt clipon ihn mit einer Meldung aus dem Stack, damit die übrigen weiter abrufbar sind; das gilt auch für das globale Kürzel (die Meldung erscheint im clipon-Fenster)',
+        '• Lässt sich ein Eintrag gar nicht mehr kopieren (Bilddatei fehlt oder ist beschädigt), nimmt clipon ihn mit einer Meldung aus dem Stack, damit die übrigen weiter abrufbar sind; das gilt auch für das globale Kürzel (die Meldung erscheint im clipon-Fenster; ist es gerade versteckt, beim nächsten Öffnen)',
         '• Einzelne Einträge entfernen oder den ganzen Stack leeren',
         '• „Zusammenführen“ fügt alle Text-Einträge des Stacks (in Stack-Reihenfolge, durch Zeilenumbrüche getrennt) zu einem neuen Verlaufs-Eintrag zusammen und kopiert ihn — der Stack bleibt dabei erhalten, Bilder werden übersprungen',
         'Typischer Ablauf: fünf Angaben aus einem Dokument kopieren, alle in den Stack, dann im Formular Feld für Feld Cmd/Strg+Shift+B → Cmd/Strg+V.',
@@ -242,7 +242,7 @@ const de: Content = {
       body: [
         'Snippets können Platzhalter enthalten, die beim Kopieren durch aktuelle Werte ersetzt werden:',
         '• {date} — heutiges Datum als 2026-08-24',
-        '• {date:FORMAT} — Datum/Zeit in eigenem Format, z. B. {date:%d.%m.%Y} → 24.08.2026 oder {date:%A, %d. %B} — die Platzhalter entsprechen strftime (%Y Jahr, %m Monat, %d Tag, %H Stunde, %M Minute)',
+        '• {date:FORMAT} — Datum/Zeit in eigenem Format, z. B. {date:%d.%m.%Y} → 24.08.2026 oder {date:%A, %d. %B} — die Platzhalter entsprechen strftime (%Y Jahr, %m Monat, %d Tag, %H Stunde, %M Minute); Wochentags- und Monatsnamen (%A, %B) erscheinen immer auf Englisch',
         '• {time} — aktuelle Uhrzeit als 09:05',
         '• {clipboard} — der Inhalt, der gerade in der Zwischenablage liegt (bevor das Snippet kopiert wird)',
         'Unbekannte Platzhalter und ungültige Formate bleiben unverändert stehen. Einen {cursor}-Platzhalter gibt es bewusst nicht — clipon kopiert Snippets, es setzt keine Einfügemarke.',
@@ -281,7 +281,7 @@ const de: Content = {
         'Der Quick-Picker ist ein kleines Fenster am Mauszeiger, das du in jeder App per Cmd/Strg+Shift+Leertaste öffnest — ohne das Hauptfenster.',
         '• Tippen filtert den Verlauf, ↑↓ bewegen die Auswahl',
         '• ↩ oder Klick fügt den Eintrag direkt in die App ein, aus der du gekommen bist',
-        '• 1–9 wählen den Eintrag mit dieser Nummer (bei leerer Suche, sonst mit Cmd)',
+        '• 1–9 wählen den Eintrag mit dieser Nummer (bei leerer Suche, sonst mit Cmd/Strg)',
         '• Esc oder ein Klick außerhalb schließt den Picker',
         'Direktes Einfügen: clipon bringt die vorherige App wieder nach vorn und drückt für dich Cmd+V bzw. Strg+V. Auf dem Mac braucht es dafür die Berechtigung „Bedienungshilfen“ — Einstellungen → Direktes Einfügen → „Berechtigung anfordern“. Solange sie fehlt, kopiert der Picker nur, und du fügst mit Cmd+V selbst ein.',
         'Windows: Das direkte Einfügen funktioniert ohne Freigabe. Ausnahme: Programme, die als Administrator laufen, nehmen von clipon keine Tastendrücke an — dort liegt der Eintrag in der Zwischenablage, und du drückst Strg+V selbst.',
@@ -308,6 +308,7 @@ const de: Content = {
         'Auch Bilddateien zählen: Kopierst du im Finder oder Explorer eine PNG-, JPEG-, GIF-, WebP-, BMP- oder TIFF-Datei, liest clipon das Bild ein und zeigt es mit Dateinamen und Abmessungen — die Suche findet es über den Dateinamen.',
         'Andere kopierte Dateien (PDF, ZIP, …) erscheinen als Pfad-Eintrag mit file-Badge — praktisch, um Pfade erneut einzufügen.',
         'Jedes Bild wird als eigene, einzeln verschlüsselte Datei gespeichert. Wer Bilder nicht mitschneiden will, schaltet „Bilder mitschneiden“ in den Einstellungen ab — sehr große Bilddateien (über 64 MB) werden übersprungen.',
+        'Vorschaubilder in der Liste lädt clipon erst, wenn sie ins Bild scrollen, und höchstens drei gleichzeitig — so bleibt auch ein Verlauf mit Hunderten Bildern bedienbar.',
       ],
     },
     {
@@ -343,11 +344,11 @@ const de: Content = {
       body: [
         '• Sprache — Deutsch / English',
         '• Modus — Dunkel (Standard) oder Hell; gilt für Hauptfenster und Quick-Picker',
-        '• Verlaufsgröße — wie viele Einträge behalten werden, 10 bis 100.000 (Pins zählen nicht gegen das Aufräumen)',
+        '• Verlaufsgröße — wie viele unangepinnte Einträge behalten werden, 10 bis 100.000 (Pins kommen dazu und werden nie aufgeräumt)',
         '• Text ignorieren ab — sehr große Kopien gar nicht erst aufnehmen; Wert in KB, Standard 512 (0 = nie)',
         '• Bilder mitschneiden — Bild-Inhalte an/aus',
         '• Beim Leeren Pins behalten — Schutz für Angepinntes',
-        '• Beim Anmelden starten — clipon automatisch mit dem System starten (Mac: Anmeldeobjekt, Windows: Autostart-Eintrag)',
+        '• Beim Anmelden starten — clipon automatisch mit dem System starten (Mac: Startobjekt in ~/Library/LaunchAgents, Windows: Autostart-Eintrag in der Registry)',
         '• Privatsphäre — Liste der ignorierten Apps',
         '• Kürzel — Editor für alle Kürzel (global & in der App): klicken, Tasten drücken, fertig',
         '• Direktes Einfügen (nur Mac) — Status der Bedienungshilfen-Berechtigung für den Quick-Picker',
@@ -413,8 +414,8 @@ const en: Content = {
       title: 'Pins',
       body: [
         'Pin what matters: hover over an item and click the pin icon — it turns yellow and the item gets a dot.',
-        'Pinned items survive cleanup and clearing the history. The “Pins” filter shows them all at a glance.',
-        'The history keeps 500 items by default; the oldest unpinned ones go first.',
+        'Pinned items survive cleanup and — as long as “Keep pins when clearing” is on (default) — clearing the history too. The “Pins” filter shows them all at a glance.',
+        'The history keeps 500 items by default, pins not counted; the oldest unpinned ones go first.',
       ],
     },
     {
@@ -468,12 +469,12 @@ const en: Content = {
     {
       sel: '[data-tour="filters"]',
       title: 'Filters',
-      body: 'The history, filtered: Everything, Pins, Text, Links, Colors, Images. “Pins” shows pinned items — they survive cleanup and clearing. “Colors” has a color picker with an eyedropper on top.',
+      body: 'The history, filtered: Everything, Pins, Text, Links, Colors, Images. “Pins” shows pinned items — they survive cleanup and (default setting) clearing. “Colors” has a color picker with an eyedropper on top.',
     },
     {
       sel: '[data-tour="search"]',
       title: 'Search',
-      body: 'Full-text search across the whole history — images are found by their file name. The trash icon next to it clears the history (pins survive).',
+      body: 'Full-text search across the whole history — images are found by their file name. The trash icon next to it clears the history (pins survive unless you turn that off in Settings).',
     },
     {
       sel: '[data-tour="list"]',
@@ -522,8 +523,8 @@ const en: Content = {
         '• Double-click or the copy icon — back to the clipboard',
         '• Icons on hover: copy, pin, add to stack, delete',
         'Each item’s type is detected automatically and shown as a badge: url (links), @ (email), col (colors, with a swatch), { } (code), img (images), file (copied files), txt (everything else).',
-        'The history size is configurable (default 500 items). When the limit is reached, the oldest unpinned items are removed.',
-        'If something goes wrong (clipboard locked, file cannot be saved, item deleted in the meantime), clipon shows a message at the bottom in the selected language — also when saving fails in the background, e.g. on a full disk.',
+        'The history size is configurable (default 500 items); pinned items don’t count. When there are more unpinned items than allowed, the oldest of them are removed — pinned ones never.',
+        'If something goes wrong (clipboard locked, file cannot be saved, item deleted in the meantime), clipon shows a message at the bottom in the selected language — also when saving fails in the background, e.g. on a full disk. If that happens while the window is hidden, the message is shown again the next time you open it.',
       ],
     },
     {
@@ -539,7 +540,7 @@ const en: Content = {
       id: 'pins',
       title: 'Pins',
       body: [
-        'Pinned items (yellow dot) are protected from automatic cleanup and from “Clear history”.',
+        'Pinned items (yellow dot) are protected from automatic cleanup and don’t count against the history size; the setting “Keep pins when clearing” (default: on) protects them from “Clear history”.',
         'Pin and unpin via the pin icon on an item or the button in the detail view. The “Pins” filter shows them all at a glance.',
       ],
     },
@@ -550,7 +551,7 @@ const en: Content = {
         'The stack is a queue for pasting in order: collect items via “Add to stack”, then retrieve them one by one.',
         '• “Copy next” in the stack view — or from anywhere via Cmd/Ctrl+Shift+B',
         '• Each retrieval copies the front item and only then removes it from the stack — if the clipboard is locked at that moment, the item stays in front and you simply try again',
-        '• If an item can no longer be copied at all (image file missing or damaged), clipon removes it from the stack with a message so the others stay retrievable; this also applies to the global shortcut (the message appears in the clipon window)',
+        '• If an item can no longer be copied at all (image file missing or damaged), clipon removes it from the stack with a message so the others stay retrievable; this also applies to the global shortcut (the message appears in the clipon window; if it is hidden, the next time you open it)',
         '• Remove single items or clear the whole stack',
         '• “Merge” joins all text items of the stack (in stack order, separated by line breaks) into one new history entry and copies it — the stack stays intact, images are skipped',
         'Typical flow: copy five values from a document, add all to the stack, then in the form: Cmd/Ctrl+Shift+B → Cmd/Ctrl+V, field by field.',
@@ -573,7 +574,7 @@ const en: Content = {
       body: [
         'Snippets can contain placeholders that are replaced with current values when copied:',
         '• {date} — today’s date as 2026-08-24',
-        '• {date:FORMAT} — date/time in a custom format, e.g. {date:%m/%d/%Y} → 08/24/2026 or {date:%A, %B %d} — placeholders follow strftime (%Y year, %m month, %d day, %H hour, %M minute)',
+        '• {date:FORMAT} — date/time in a custom format, e.g. {date:%m/%d/%Y} → 08/24/2026 or {date:%A, %B %d} — placeholders follow strftime (%Y year, %m month, %d day, %H hour, %M minute); day and month names (%A, %B) are always English',
         '• {time} — current time as 09:05',
         '• {clipboard} — whatever is on the clipboard right now (before the snippet replaces it)',
         'Unknown placeholders and invalid formats are left as written. There is deliberately no {cursor} placeholder — clipon copies snippets, it does not place a caret.',
@@ -612,7 +613,7 @@ const en: Content = {
         'The quick picker is a small window at the mouse pointer that you open in any app with Cmd/Ctrl+Shift+Space — no main window needed.',
         '• Typing filters the history, ↑↓ move the selection',
         '• ↩ or a click pastes the item straight into the app you came from',
-        '• 1–9 pick the item with that number (with an empty search, otherwise with Cmd)',
+        '• 1–9 pick the item with that number (with an empty search, otherwise with Cmd/Ctrl)',
         '• Esc or a click outside closes the picker',
         'Direct paste: clipon brings the previous app back to the front and presses Cmd+V or Ctrl+V for you. On the Mac this requires the “Accessibility” permission — Settings → Direct paste → “Request permission”. While it is missing, the picker only copies and you paste with Cmd+V yourself.',
         'Windows: direct paste works without any permission. Exception: programs running as administrator do not accept key presses from clipon — there the item is on the clipboard and you press Ctrl+V yourself.',
@@ -639,6 +640,7 @@ const en: Content = {
         'Image files count too: copy a PNG, JPEG, GIF, WebP, BMP or TIFF file in Finder or Explorer and clipon reads the image and shows it with file name and dimensions — search finds it by file name.',
         'Other copied files (PDF, ZIP, …) appear as a path entry with the file badge — handy for pasting paths again.',
         'Each image is stored as its own individually encrypted file. If you don’t want images captured, disable “Capture images” in Settings — very large image files (over 64 MB) are skipped.',
+        'Thumbnails in the list are loaded only once they scroll into view, at most three at a time — so even a history with hundreds of images stays responsive.',
       ],
     },
     {
@@ -674,11 +676,11 @@ const en: Content = {
       body: [
         '• Language — Deutsch / English',
         '• Mode — dark (default) or light; applies to the main window and the quick picker',
-        '• History size — how many items to keep, 10 to 100,000 (pins don’t count against cleanup)',
+        '• History size — how many unpinned items to keep, 10 to 100,000 (pins come on top and are never cleaned up)',
         '• Ignore text above — skip very large copies entirely; value in KB, default 512 (0 = never)',
         '• Capture images — image contents on/off',
         '• Keep pins when clearing — protection for pinned items',
-        '• Start at login — launch clipon with the system (Mac: login item, Windows: startup entry)',
+        '• Start at login — launch clipon with the system (Mac: launch agent in ~/Library/LaunchAgents, Windows: startup entry in the registry)',
         '• Privacy — the list of ignored apps',
         '• Shortcuts — the editor for every binding (global & in-app): click, press keys, done',
         '• Direct paste (Mac only) — status of the Accessibility permission for the quick picker',

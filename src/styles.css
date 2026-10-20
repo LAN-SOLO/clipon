@@ -357,6 +357,8 @@ label.check input { width: auto; }
   border: 1px solid var(--border);
   flex-shrink: 0;
 }
+/* invisible stand-in until the thumbnail scrolls into view and has loaded */
+.row span.thumb { display: inline-block; width: 36px; height: 36px; flex-shrink: 0; }
 
 /* detail */
 .detail {

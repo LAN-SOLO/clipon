@@ -398,7 +398,11 @@ fn write_atomic(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(".clipon-part");
     let tmp = std::path::PathBuf::from(tmp);
-    std::fs::write(&tmp, data).map_err(io_err)?;
+    // a full disk leaves a partial file — don't leave it in the user's folder
+    std::fs::write(&tmp, data).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        io_err(e)
+    })?;
     // Windows: the target may be open briefly (scanner, OneDrive) — retry
     clipon_core::replace_file(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);

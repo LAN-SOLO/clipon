@@ -27,7 +27,37 @@ import { ActionId, comboFromEvent, formatCombo, hasRealModifier, resolveKeymap }
 
 type View = 'history' | 'stack' | 'snippets';
 
+// Thumbnails are decoded and scaled by the backend. With hundreds of images
+// in the history, requesting them all at once would queue hundreds of decodes
+// and keep every data URL forever — so: bounded cache, at most THUMB_PARALLEL
+// requests at a time, and rows only ask once they scroll into view.
+const THUMB_CACHE_MAX = 400;
+const THUMB_PARALLEL = 3;
 const thumbCache = new Map<string, string>();
+function cacheThumb(key: string, data: string) {
+  thumbCache.delete(key);
+  thumbCache.set(key, data);
+  while (thumbCache.size > THUMB_CACHE_MAX) {
+    thumbCache.delete(thumbCache.keys().next().value as string);
+  }
+}
+let thumbActive = 0;
+const thumbQueue: (() => void)[] = [];
+function thumbSlot<T>(job: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const run = () => {
+      thumbActive++;
+      job()
+        .then(resolve, reject)
+        .finally(() => {
+          thumbActive--;
+          thumbQueue.shift()?.();
+        });
+    };
+    if (thumbActive < THUMB_PARALLEL) run();
+    else thumbQueue.push(run);
+  });
+}
 
 /** Windows refuses these as file names, with or without extension. */
 const WIN_RESERVED = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])$/i;
@@ -45,26 +75,55 @@ export function exportBaseName(preview: string): string {
 }
 
 function Thumb({ id, maxDim, className }: { id: string; maxDim: number; className?: string }) {
-  const [src, setSrc] = useState<string | null>(thumbCache.get(`${id}:${maxDim}`) ?? null);
+  const key = `${id}:${maxDim}`;
+  const [src, setSrc] = useState<string | null>(thumbCache.get(key) ?? null);
+  const [visible, setVisible] = useState(false);
+  const boxRef = useRef<HTMLSpanElement | null>(null);
   useEffect(() => {
-    let alive = true;
-    const key = `${id}:${maxDim}`;
-    if (thumbCache.has(key)) {
-      setSrc(thumbCache.get(key)!);
+    const el = boxRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
       return;
     }
-    api
-      .getItemImage(id, maxDim)
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [key]);
+  useEffect(() => {
+    let alive = true;
+    const cached = thumbCache.get(key);
+    if (cached) {
+      setSrc(cached);
+      return;
+    }
+    setSrc(null);
+    if (!visible) return;
+    // the detail preview is a single, explicit request — it skips the queue
+    const job = () => (alive ? api.getItemImage(id, maxDim) : Promise.resolve(null));
+    (maxDim > 96 ? job() : thumbSlot(job))
       .then((data) => {
-        thumbCache.set(key, data);
+        if (!data) return;
+        cacheThumb(key, data);
         if (alive) setSrc(data);
       })
       .catch(() => {});
     return () => {
       alive = false;
     };
-  }, [id, maxDim]);
-  return src ? <img className={className} src={src} alt="" /> : null;
+  }, [id, maxDim, key, visible]);
+  return src ? (
+    <img className={className} src={src} alt="" />
+  ) : (
+    <span ref={boxRef} className={className} aria-hidden="true" />
+  );
 }
 
 function fmtTime(iso: string, lang: Lang): string {
@@ -231,10 +290,35 @@ export default function App() {
     };
   }, [refreshItems, refreshStack, refreshSnippets]);
 
+  // Errors from the watcher, tray or a global shortcut usually happen while
+  // the main window is hidden or behind another app — a 5 s toast would go
+  // unseen. Show it now AND keep it until the window is next focused.
+  // (No notification plugin in this app: a system notification would need a
+  // new dependency.)
+  const pendingBg = useRef<string | null>(null);
+  const bgToast = (msg: string) => {
+    showToast(msg, 5000);
+    const active = document.visibilityState === 'visible' && document.hasFocus();
+    if (!active) pendingBg.current = msg;
+  };
+  useEffect(() => {
+    const flush = () => {
+      const msg = pendingBg.current;
+      if (!msg || document.visibilityState !== 'visible') return;
+      pendingBg.current = null;
+      showToast(msg, 6000);
+    };
+    window.addEventListener('focus', flush);
+    document.addEventListener('visibilitychange', flush);
+    return () => {
+      window.removeEventListener('focus', flush);
+      document.removeEventListener('visibilitychange', flush);
+    };
+  }, [showToast]);
   const failRef = useRef(fail);
-  failRef.current = (e: unknown) => showToast(`${t.saveFailedToast} ${errText(e)}`, 5000);
+  failRef.current = (e: unknown) => bgToast(`${t.saveFailedToast} ${errText(e)}`);
   const actionFailRef = useRef(fail);
-  actionFailRef.current = fail;
+  actionFailRef.current = (e: unknown) => bgToast(errText(e));
 
   const selected = items.find((i) => i.id === selectedId) ?? null;
 

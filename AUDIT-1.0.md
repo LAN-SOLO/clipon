@@ -308,3 +308,103 @@ Abläufe in der UI-Harness durchgespielt, L1–L13 an zusätzlichen Stellen nach
 - [ ] Stack mit einem Bild-Eintrag, dessen Datei im Datenordner gelöscht wurde: Cmd/Strg+Shift+B → Meldung im Fenster, der nächste Druck liefert den folgenden Eintrag
 - [ ] Zwischenablage von anderer App blockiert (Windows): „Nächsten kopieren“ meldet den Fehler, der Eintrag bleibt vorn
 - [ ] Native Rückfrage (Snippet löschen, Verlauf leeren) unter Windows mit eigenen Knopf-Texten „Löschen“/„Abbrechen“
+
+## Runde 3 (2026-10-20, abschließend)
+
+Basis `7c05322`. Jede Sachaussage aus Handbuch/Tutorial/Tour (`Help.tsx`, DE und EN), README und
+den In-App-Texten (`i18n.ts`) gegen den Code geprüft; DE und EN inhaltlich abgeglichen.
+Danach End-to-End-Abläufe in der UI-Harness (DE + EN, zusätzlich mit Windows-Plattformkennung)
+und neue Rust-Tests für Neustart/schreibgeschützten Ordner.
+
+### Falsche bzw. ungenaue Aussagen — behoben
+
+| Aussage | Befund | Lösung |
+|---|---|---|
+| „Verlaufsgröße … (Pins zählen nicht gegen das Aufräumen)“ (Handbuch, Audit-Inventar) | **Falsch, mit Datenverlust-Folge:** `enforce_limit` zählte *alle* Einträge. Mit so vielen Pins wie dem Limit (z. B. Limit 10, 10 Pins) wurde jede neue Kopie sofort wieder verdrängt — der Verlauf nahm nichts mehr auf | Code: es zählen nur unangepinnte Einträge, Pins kommen dazu und werden nie aufgeräumt. Tests `limit_evicts_oldest_unpinned` (angepasst), `new_copy_survives_when_pins_fill_the_limit`; Mock der Harness spiegelt das. Texte DE+EN präzisiert (Tutorial, Verlauf, Pins, Einstellungen, README) |
+| „Pins überleben … das Leeren des Verlaufs“ (Tutorial, Tour, Leer-Zustand „Pins“) | nur solange „Beim Leeren Pins behalten“ an ist | Text DE+EN: „(Standard)“ bzw. „außer du schaltest das ab“ |
+| Quick-Picker „1–9 … sonst mit Cmd“ | Code akzeptiert Cmd **oder** Strg (`metaKey \|\| ctrlKey`); unter Windows gibt es kein Cmd | Text DE „Cmd/Strg“, EN „Cmd/Ctrl“ |
+| Platzhalter `{date:%A, %d. %B}` | chrono formatiert Wochentag/Monat immer englisch („Monday“), auch in der deutschen Oberfläche | Hinweis DE+EN ergänzt |
+| Platzhalter „unbekannte bleiben stehen“ | `{a {date}}` ließ auch das innere `{date}` unersetzt (Token reichte bis zur ersten `}`) | Code: innere Klammer beginnt das eigentliche Token; Test erweitert (`{a {date}}`, `{{time}}`) |
+| „Beim Anmelden starten (Mac: Anmeldeobjekt)“ | Plugin nutzt `MacosLauncher::LaunchAgent` (Plist in `~/Library/LaunchAgents`), kein Anmeldeobjekt | Text DE+EN korrigiert (Windows: Run-Eintrag in der Registry) |
+| „Klappt etwas nicht (… Datei nicht speicherbar …) zeigt clipon eine Meldung — auch im Hintergrund, etwa bei vollem Datenträger“ | Für **Bild-Aufnahmen** falsch: scheiterte das Schreiben der Bilddatei (voll/schreibgeschützt), wurde die Kopie still verworfen, eine Teil-Datei blieb liegen | Code: `write_blob` entfernt die Teil-Datei und meldet `save-failed` |
+| dito, Meldung „im clipon-Fenster“ (Stack-Kürzel, Watcher, Tray) | Toast lief 5 s ab, während das Fenster versteckt war — niemand sah ihn | siehe Restpunkt 1 |
+
+Zusätzlich (kein Text betroffen): Teil-Dateien bei vollem Datenträger blieben liegen — beim Verlauf
+(`history.tmp`) und beim Export (`<name>.clipon-part` im Zielordner des Nutzers). Beide werden jetzt
+auch entfernt, wenn schon das Schreiben scheitert.
+
+Geprüft und zutreffend (Auswahl): Dedupe + Zähler, Volltextsuche über den vollen Text + Bild-Label,
+Typ-Badges, Farb-Erkennung (#rgb/#rrggbb/#rrggbbaa, rgb[a]/hsl[a]), Werkzeuge (Trim, Groß/klein,
+Titel, Zeilenumbrüche → Leerzeichen, JSON, URL RFC 3986), Zusammenführen (Zeilenumbruch, Stack bleibt,
+Bilder übersprungen, nur-Bilder → Meldung), Stack-Abruf-Logik, Snippets in der verschlüsselten
+Datenbank, Platzhalter-Formate, Export-Endung erzwungen, Import (1 GB, BOM, Pins/Zeitstempel erhalten,
+Limit danach), Bildformate (image-Features png/jpeg/gif/bmp/webp/tiff), 64 MB / 20 Dateien pro Kopie,
+Einstellungs-Grenzen 10–100.000 und 512 KB/0 = nie, Standard-Kürzel (3 global, 23 in der App),
+Picker schließt bei Fokusverlust, Schließen = Verstecken, Dock-Klick (`RunEvent::Reopen`),
+Updater-Endpoint/Signatur, Tutorial 9 Schritte. DE und EN sagen nach den Korrekturen dasselbe.
+
+### Restpunkte
+
+1. **Toast bei verstecktem Fenster.** `tauri-plugin-notification` ist **nicht** im Lockfile — eine
+   Systemmitteilung wäre eine neue Abhängigkeit, daher nicht gebaut. Stattdessen: Meldungen aus dem
+   Hintergrund (`save-failed`, `action-failed`) erscheinen sofort *und* werden, wenn das Fenster
+   gerade nicht sichtbar/fokussiert ist (`document.hasFocus()`), gemerkt und beim nächsten Fokus bzw.
+   Sichtbarwerden erneut 6 s gezeigt (nur die letzte, einmalig). Handbuch DE+EN und README nennen das.
+2. **Hunderte Bilder.** Vorher forderte jede Liste *alle* Vorschaubilder gleichzeitig an (bei 400
+   Bildern 800 parallele Backend-Aufrufe wegen StrictMode im Dev-Build — jeder entschlüsselt und
+   skaliert das Vollbild) und behielt jede Data-URL für immer. Jetzt: Vorschauen laden erst, wenn die
+   Zeile ins Bild kommt (`IntersectionObserver`, 200 px Vorlauf), höchstens 3 gleichzeitig, Cache auf
+   400 Vorschauen begrenzt; das große Detailbild umgeht die Warteschlange. Unsichtbarer 36-px-Platzhalter,
+   damit die Zeilen nicht springen. Harness: 400 Bilder → beim Öffnen der Liste 14 statt 800 Aufrufe (nur die
+   sichtbaren Zeilen + Vorlauf), nach Scrollen ans Ende 28; Höchstwert 3 parallel (vorher 800).
+
+### End-to-End-Abläufe (UI-Harness, headless Chromium, gemocktes IPC mit echtem Dialog-Verhalten)
+
+Je DE und EN, zusätzlich alle mit Windows-Plattformkennung (UA/`userAgentData` = Windows):
+
+| # | Ablauf | Ergebnis |
+|---|---|---|
+| J1 | Erststart: Tutorial 9 Schritte bis „Los geht’s“, Flag gesetzt | bestanden |
+| J2 | Kopie erfasst → gleiche Kopie erneut → kein Duplikat, „2×“ → Doppelklick kopiert zurück | bestanden |
+| J3 | 10 Pins, Limit auf 10 → neue Kopie bleibt im Verlauf | bestanden (Kernlogik: Rust-Test) |
+| J4 | Verlauf leeren: nativer Dialog „Abbrechen“ → nichts weg; bestätigen → nur Pin bleibt | bestanden |
+| J5 | Stack sammeln → zusammenführen → abrufen; `action-failed` bei verstecktem Fenster → nach Fokus erneut sichtbar, danach nicht noch einmal | bestanden; **schlägt auf `7c05322` fehl** |
+| J6 | Hintergrund-Speichern scheitert („No space left on device (os error 28)“) bei verstecktem Fenster → Meldung beim nächsten Öffnen | bestanden; **schlägt auf `7c05322` fehl** |
+| J7 | Snippet mit `{date}` anlegen → kopieren → Löschen abbrechen → löschen | bestanden |
+| J8 | Backup-Export: Dialog abgebrochen → kein Aufruf, keine Meldung; schreibgeschützt (os error 30), voll (28), gesperrt (32), verweigert (13) → „Export fehlgeschlagen: Datei-Fehler (…)“; Knöpfe danach wieder frei | bestanden |
+| J9 | Import: Dialog abgebrochen → nichts; falsche Passphrase → Meldung; Einzel-Export abgebrochen → kein Aufruf, kein Toast | bestanden |
+| J10 | 400 Bild-Einträge: Liste öffnen, ans Ende scrollen, Detailbild | bestanden; **schlägt auf `7c05322` fehl** (800 Aufrufe/800 parallel) |
+| J11 | Quick-Picker: tippen filtert, Strg/Cmd+1 bei Suche fügt ein, 1 ohne Modifier bei Suche nicht, Esc schließt | bestanden |
+
+Neustart mitten im Speichern und schreibgeschützter Datenordner sind in der Harness nicht abbildbar
+(der Mock hält alles im Speicher) und deshalb als Rust-Tests umgesetzt:
+`restart_after_interrupted_save_keeps_last_good_store` (halb geschriebene Temp-Datei → letzter guter
+Stand wird geladen, nächstes Speichern klappt) und `save_into_read_only_folder_fails_with_code_and_keeps_old_store`
+(Unix; Fehler `io: …`, alter Verlauf intakt, keine Temp-Datei).
+
+Alte Harness-Suiten nach den Änderungen erneut: 31 (Runde 1) + 13 (Runde 2) + 3 (Verifikation) + 3 (Windows) —
+alle bestanden, 0 Konsolenfehler, 0 IPC-Argumentfehler.
+
+### Tests Runde 3
+
+| Prüfung | Ergebnis |
+|---|---|
+| `cargo test --workspace` | 33 Core + 9 App = 42 grün (neu: Pins vs. Limit, verschachtelte Platzhalter, Neustart nach abgebrochenem Speichern, schreibgeschützter Ordner) |
+| `pnpm build` (tsc + vite) | fehlerfrei |
+| `cargo clippy --workspace --tests` | nur die bekannten `sort_by_key`-Hinweise |
+| Windows-Cross-Typecheck (`x86_64-pc-windows-msvc`, kein Link) | fehlerfrei, 0 Warnungen |
+| UI-Harness | 22 neue Ablauf-Szenarien (DE/EN) + 22 mit Windows-Plattform + 50 aus Runde 1/2 — alle bestanden |
+
+### Nur geprüft, nicht ausgeführt
+
+- Watcher-Pfad `write_blob` (echte Zwischenablage + voller Datenträger) — nur Typecheck/Review.
+- Ob WKWebView/WebView2 beim Wiedereinblenden wirklich `focus`/`visibilitychange` liefern (Harness
+  simuliert das Ereignis).
+
+### Nur am echten Gerät prüfbar (zusätzlich)
+
+- [ ] macOS + Windows: Fenster schließen, Stack leer machen, Bild-Eintrag mit gelöschter Datei in den Stack, Cmd/Strg+Shift+B → beim Öffnen per Cmd/Strg+Shift+V erscheint die Meldung
+- [ ] Datenordner schreibgeschützt machen, Screenshot kopieren → Meldung „Änderung konnte nicht gespeichert werden“ (sofort bzw. beim nächsten Öffnen), keine `.bin`-Reste
+- [ ] 300+ Bilder im Verlauf (Release-Build): Filter „Bilder“ öffnet ohne Hänger, Scrollen flüssig, Vorschauen erscheinen beim Scrollen
+- [ ] Limit 10 mit 10+ Pins: neue Kopien erscheinen und bleiben
+- [ ] Autostart auf macOS: Eintrag unter Systemeinstellungen → Allgemein → Anmeldeobjekte („Im Hintergrund erlauben“)

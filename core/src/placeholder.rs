@@ -16,6 +16,12 @@ pub fn expand(text: &str, now: DateTime<Local>, clipboard: Option<&str>) -> Stri
                 out.push_str(&rest[start..]);
                 return out;
             }
+            // "{a {date}}": the inner brace opens the real token — keep the
+            // outer one literal and continue from there
+            Some(end) if after[..end].contains('{') => {
+                out.push('{');
+                rest = after;
+            }
             Some(end) => {
                 let token = &after[..end];
                 match resolve(token, now, clipboard) {
@@ -77,5 +83,7 @@ mod tests {
         assert_eq!(expand("{foo} {date:%Q} {date:} {", now(), None), "{foo} {date:%Q} {date:} {");
         assert_eq!(expand("no tokens", now(), None), "no tokens");
         assert_eq!(expand("}{date}{", now(), None), "}2026-08-24{");
+        assert_eq!(expand("{a {date}}", now(), None), "{a 2026-08-24}");
+        assert_eq!(expand("{{time}}", now(), None), "{09:05}");
     }
 }

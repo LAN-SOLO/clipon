@@ -3,7 +3,9 @@
 Clipboard-Manager: Verlauf, Snippets und Paste-Stack — lokal, verschlüsselt, nativ.
 
 - Merkt sich Text **und Bilder**, dedupliziert, mit Pins, Suche und Typ-Filtern
-  (Links, Farben, Code, E-Mail, Dateien — automatisch erkannt).
+  (Links, Farben, Code, E-Mail, Dateien — automatisch erkannt). Die Verlaufsgröße
+  zählt nur unangepinnte Einträge; Pins kommen dazu und werden nie aufgeräumt.
+  Vorschaubilder laden erst beim Hineinscrollen (max. 3 gleichzeitig).
 - **Farben:** kopierte Farbwerte (`#hex`, `rgb()`, `hsl()`) mit Farbfeld,
   Umrechnung in alle Formate im Detail — plus System-Farbwähler mit Pipette.
 - **Bilder & Dateien:** auch im Finder kopierte Bilddateien landen als Bild im
@@ -29,10 +31,12 @@ Clipboard-Manager: Verlauf, Snippets und Paste-Stack — lokal, verschlüsselt, 
 - Tray, globale Shortcuts, Autostart, DE/EN, Hell/Dunkel, signierte In-App-Updates.
 - Läuft nur einmal pro Benutzer; ein zweiter Start holt das Fenster nach vorn.
 - Fehler erscheinen immer in der UI-Sprache (das Backend liefert nur Codes,
-  `src/errors.ts` übersetzt); Kürzel stehen da, wie sie auf der Tastatur
+  `src/errors.ts` übersetzt); Fehler aus dem Hintergrund (Watcher, Tray,
+  globale Kürzel) bei verstecktem Fenster werden beim nächsten Öffnen erneut
+  angezeigt (kein Notification-Plugin, daher keine Systemmitteilung); Kürzel stehen da, wie sie auf der Tastatur
   heißen (⌘ auf dem Mac, Strg/Ctrl unter Windows).
 
-Version 1.0.0 — Audit-Stand (Runde 1 + 2), bekannte Grenzen und manuelle
+Version 1.0.0 — Audit-Stand (Runde 1–3), bekannte Grenzen und manuelle
 Testliste: `AUDIT-1.0.md`.
 
 ## Entwicklung

@@ -137,7 +137,7 @@ fn handle_files(
             .extension()
             .map(|e| IMAGE_EXTS.contains(&e.to_string_lossy().to_lowercase().as_str()))
             .unwrap_or(false);
-        if is_image && capture_images && add_image_file(state, path, limit, source.clone()) {
+        if is_image && capture_images && add_image_file(app, state, path, limit, source.clone()) {
             changed = true;
         } else {
             others.push(path.to_string_lossy().into_owned());
@@ -160,6 +160,7 @@ fn handle_files(
 
 /// Reads and decodes one image file into an encrypted blob + history item.
 fn add_image_file(
+    app: &AppHandle,
     state: &AppState,
     path: &Path,
     limit: usize,
@@ -200,7 +201,7 @@ fn add_image_file(
             return false;
         };
         file_name = format!("{}.bin", uuid::Uuid::new_v4());
-        if std::fs::write(state.blobs_dir().join(&file_name), blob).is_err() {
+        if !write_blob(app, &state.blobs_dir().join(&file_name), &blob) {
             return false;
         }
     }
@@ -248,7 +249,7 @@ fn handle_image(app: &AppHandle, state: &AppState, img: &ImageData, source: Opti
             return;
         };
         file_name = format!("{}.bin", uuid::Uuid::new_v4());
-        if std::fs::write(state.blobs_dir().join(&file_name), blob).is_err() {
+        if !write_blob(app, &state.blobs_dir().join(&file_name), &blob) {
             return;
         }
     }
@@ -261,6 +262,20 @@ fn handle_image(app: &AppHandle, state: &AppState, img: &ImageData, source: Opti
     state.delete_blobs(&evicted);
     crate::commands::report_persist(app, state);
     let _ = app.emit("history-changed", ());
+}
+
+/// Writes an encrypted image blob. A full disk or read-only data folder must
+/// not drop the capture silently: the partial file is removed and the window
+/// gets `save-failed` (shown as a toast, also after the window reappears).
+fn write_blob(app: &AppHandle, path: &Path, blob: &[u8]) -> bool {
+    match std::fs::write(path, blob) {
+        Ok(()) => true,
+        Err(e) => {
+            let _ = std::fs::remove_file(path);
+            let _ = app.emit("save-failed", format!("io: {e}"));
+            false
+        }
+    }
 }
 
 pub fn encode_png(img: &ImageData) -> Option<Vec<u8>> {

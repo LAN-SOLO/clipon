@@ -376,13 +376,18 @@ impl Store {
         removed_files
     }
 
-    /// Evicts the oldest unpinned items above `limit`; returns image blobs to delete.
+    /// Keeps at most `limit` UNPINNED items (pins don't count against the
+    /// limit — otherwise, with as many pins as the limit, every new copy was
+    /// evicted the moment it arrived); evicts the oldest unpinned ones and
+    /// returns image blobs to delete.
     pub fn enforce_limit(&mut self, limit: usize) -> Vec<String> {
         let mut removed_files = Vec::new();
-        while self.items.len() > limit {
+        let mut unpinned = self.items.iter().filter(|i| !i.pinned).count();
+        while unpinned > limit {
             let Some(pos) = self.items.iter().rposition(|i| !i.pinned) else {
-                break; // everything pinned — keep it all
+                break;
             };
+            unpinned -= 1;
             let item = self.items.remove(pos);
             self.stack.retain(|s| *s != item.id);
             if let Some(f) = item.image_file {
@@ -577,7 +582,11 @@ pub fn save_store(store: &Store, path: &Path, key: &[u8; 32]) -> Result<(), Stri
     let json = serde_json::to_vec(store).map_err(|e| e.to_string())?;
     let blob = encrypt(key, &json)?;
     let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, &blob).map_err(|e| format!("io: {e}"))?;
+    // a full disk can leave a partial temp file behind — never keep it
+    std::fs::write(&tmp, &blob).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("io: {e}")
+    })?;
     replace_file(&tmp, path).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
         format!("io: {e}")
@@ -623,10 +632,24 @@ mod tests {
         let oldest = s.items.last().unwrap().id;
         s.set_pinned(oldest, true);
         s.enforce_limit(3);
-        assert_eq!(s.items.len(), 3);
+        // 3 unpinned (items 4, 3, 2) + the pin; pins don't count
+        assert_eq!(s.items.len(), 4);
         assert!(s.items.iter().any(|i| i.text.as_deref() == Some("item 0")));
         assert!(s.items.iter().any(|i| i.text.as_deref() == Some("item 4")));
         assert!(!s.items.iter().any(|i| i.text.as_deref() == Some("item 1")));
+    }
+
+    #[test]
+    fn new_copy_survives_when_pins_fill_the_limit() {
+        let mut s = Store::default();
+        for i in 0..3 {
+            let out = s.add_text(&format!("pin {i}"));
+            s.set_pinned(out.id, true);
+        }
+        s.add_text("fresh");
+        s.enforce_limit(3);
+        assert_eq!(s.items.len(), 4);
+        assert_eq!(s.items[0].text.as_deref(), Some("fresh"));
     }
 
     #[test]
@@ -812,6 +835,42 @@ mod tests {
         s.add_text("zwei");
         save_store(&s, &path, &key).unwrap();
         assert_eq!(load_store(&path, &key).unwrap().items.len(), 2);
+        assert!(!path.with_extension("tmp").exists());
+    }
+
+    #[test]
+    fn restart_after_interrupted_save_keeps_last_good_store() {
+        // a crash mid-save leaves a half-written temp file; the store itself
+        // was never touched, and the next save simply replaces the leftover
+        let path = tmp_path("crash.clipon");
+        let key = [5u8; 32];
+        let mut s = Store::default();
+        s.add_text("gut");
+        save_store(&s, &path, &key).unwrap();
+        std::fs::write(path.with_extension("tmp"), b"halb geschrieben").unwrap();
+        assert_eq!(load_store(&path, &key).unwrap().items[0].text.as_deref(), Some("gut"));
+        s.add_text("danach");
+        save_store(&s, &path, &key).unwrap();
+        assert_eq!(load_store(&path, &key).unwrap().items.len(), 2);
+        assert!(!path.with_extension("tmp").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_into_read_only_folder_fails_with_code_and_keeps_old_store() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = tmp_path("ro.clipon");
+        let dir = path.parent().unwrap().to_path_buf();
+        let key = [6u8; 32];
+        let mut s = Store::default();
+        s.add_text("alt");
+        save_store(&s, &path, &key).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        s.add_text("neu");
+        let err = save_store(&s, &path, &key).unwrap_err();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(err.starts_with("io: "), "{err}");
+        assert_eq!(load_store(&path, &key).unwrap().items.len(), 1);
         assert!(!path.with_extension("tmp").exists());
     }
 
